@@ -1,0 +1,2610 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Absensi — Halina</title>
+<link rel="manifest" href="./manifest.json" id="app-manifest" />
+<meta name="theme-color" content="#20293A" id="app-theme-color" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Absensi" id="app-apple-title" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+  :root{
+    --paper:#FAF7F1; --ink:#20293A; --ink-soft:#5B6472; --line:#DFD8C8;
+    --stamp:#B9752B; --stamp-soft:#F4E3CC; --good:#3F7350; --good-soft:#E4EEE3;
+    --bad:#AC3E3E; --bad-soft:#F5E3E1; --card:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--paper); color:var(--ink); font-family:'Inter',ui-sans-serif,system-ui,sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh;}
+  h1,h2,h3,.display{font-family:'Space Grotesk',ui-sans-serif,system-ui,sans-serif; letter-spacing:-0.01em;}
+  .topbar{display:flex;align-items:center;justify-content:space-between; padding:18px 20px;border-bottom:1px solid var(--line); max-width:1200px;margin:0 auto;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-mark{width:34px;height:34px;border-radius:50%; border:2px solid var(--stamp); color:var(--stamp); display:flex;align-items:center;justify-content:center; font-family:'Space Grotesk';font-weight:700;font-size:14px;}
+  .brand-name{font-family:'Space Grotesk';font-weight:600;font-size:17px;}
+  .brand-sub{font-size:12px;color:var(--ink-soft);}
+  .pill-btn{border:1px solid var(--line); background:transparent; color:var(--ink); padding:8px 14px; border-radius:100px; font-size:13px; cursor:pointer; font-family:'Inter'; transition:background .15s ease; white-space:nowrap;}
+  .pill-btn:hover{background:#F0EBDF;}
+  .pill-btn.small{padding:5px 11px; font-size:12px;}
+  .pill-btn.good{border-color:var(--good); color:var(--good);}
+  .pill-btn.bad{border-color:var(--bad); color:var(--bad);}
+  .center-screen{min-height:calc(100vh - 74px); display:flex; align-items:center; justify-content:center; padding:24px;}
+  .panel{width:100%; max-width:420px; background:var(--card); border:1px solid var(--line); border-radius:4px; padding:32px 28px;}
+  .panel h2{font-size:22px;margin:0 0 4px;}
+  .panel .lead{color:var(--ink-soft); font-size:14px; margin:0 0 24px; line-height:1.5;}
+  label{display:block; font-size:12.5px; color:var(--ink-soft); margin:16px 0 6px; font-weight:600;}
+  input, select, textarea{width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:3px; font-size:14px; font-family:'Inter'; background:#FEFDFB; color:var(--ink);}
+  textarea{resize:vertical; min-height:70px;}
+  input:focus, select:focus, textarea:focus{outline:none; border-color:var(--stamp);}
+  .btn-main{width:100%; margin-top:22px; padding:12px; border:none; border-radius:3px; background:var(--ink); color:var(--paper); font-family:'Inter'; font-weight:600; font-size:14.5px; cursor:pointer;}
+  .btn-main:hover{background:#131A27;}
+  .btn-main:disabled{opacity:.5; cursor:not-allowed;}
+  .switch-link{display:block; text-align:center; margin-top:18px; font-size:13px; color:var(--stamp); cursor:pointer;}
+  .err{background:var(--bad-soft); color:var(--bad); font-size:13px; padding:10px 12px; border-radius:3px; margin-top:16px; line-height:1.4;}
+  .msg-ok{background:var(--good-soft); color:var(--good); font-size:13px; padding:10px 12px; border-radius:3px; margin-top:16px; line-height:1.4;}
+  .shell{display:flex; min-height:calc(100vh - 74px); max-width:1200px; margin:0 auto;}
+  .nav{width:190px; flex-shrink:0; border-right:1px solid var(--line); padding:24px 0;}
+  .nav a{display:block; padding:10px 20px; font-size:14px; color:var(--ink-soft); cursor:pointer; border-left:3px solid transparent;}
+  .nav a.active{color:var(--ink); border-left-color:var(--stamp); background:#F3EEE2; font-weight:600;}
+  .main{flex:1; padding:32px 28px; min-width:0;}
+  .section-title{font-size:20px; margin:0 0 4px;}
+  .section-sub{color:var(--ink-soft); font-size:13.5px; margin:0 0 24px;}
+  .punch-wrap{display:flex; flex-direction:column; align-items:center; padding:40px 0 24px;}
+  .clock-time{font-family:'Space Grotesk'; font-size:42px; font-weight:600;}
+  .clock-date{color:var(--ink-soft); font-size:13.5px; margin-top:2px; margin-bottom:28px;}
+  .punch-btn{width:160px; height:160px; border-radius:50%; border:2px solid var(--ink); background:var(--ink); color:var(--paper); font-family:'Space Grotesk'; font-weight:600; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.3;}
+  .punch-btn.out{background:var(--paper); color:var(--ink);}
+  .punch-btn:disabled{opacity:.45; cursor:not-allowed;}
+  .status-row{margin-top:22px; font-size:13.5px; color:var(--ink-soft); text-align:center; max-width:320px;}
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  th{text-align:left; font-weight:600; color:var(--ink-soft); font-size:12px; border-bottom:1px solid var(--line); padding:8px 10px;}
+  td{padding:10px 10px; border-bottom:1px solid #EFEAE0; vertical-align:top;}
+  .tag{display:inline-block; padding:2px 9px; border-radius:100px; font-size:11.5px; font-weight:600;}
+  .tag.hadir{background:var(--good-soft); color:var(--good);}
+  .tag.terlambat{background:var(--stamp-soft); color:var(--stamp);}
+  .tag.alpha, .tag.izin, .tag.sakit{background:#EEE; color:var(--ink-soft);}
+  .tag.approved{background:var(--good-soft); color:var(--good);}
+  .tag.rejected{background:var(--bad-soft); color:var(--bad);}
+  .tag.pending_supervisor, .tag.pending_hr{background:var(--stamp-soft); color:var(--stamp);}
+  .tag.geo-ok{background:var(--good-soft); color:var(--good);}
+  .tag.geo-bad{background:var(--bad-soft); color:var(--bad);}
+  .tag.trial{background:var(--stamp-soft); color:var(--stamp);}
+  .tag.active{background:var(--good-soft); color:var(--good);}
+  .tag.expired{background:#EEE; color:var(--ink-soft);}
+  .tag.suspended{background:var(--bad-soft); color:var(--bad);}
+  .tag.archived{background:#E2E2E2; color:#555;}
+  .toolbar{display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; align-items:center;}
+  .toolbar .grow{flex:1; min-width:180px;}
+  .toolbar-right{margin-left:auto; display:flex; gap:10px;}
+  .modal-box.wide{max-width:480px; text-align:left;}
+  .modal-box.wide h4{font-size:17px; margin-bottom:2px;}
+  .modal-box .field-err{background:var(--bad-soft); color:var(--bad); font-size:12.5px; padding:8px 10px; border-radius:3px; margin-top:14px; display:none; line-height:1.4;}
+  .modal-box .modal-actions{display:flex; gap:10px; margin-top:20px;}
+  .modal-box .modal-actions .pill-btn{flex:0 0 auto;}
+  .modal-box .modal-actions .btn-main{margin-top:0; flex:1;}
+  .detail-grid{display:grid; grid-template-columns:120px 1fr; gap:10px 14px; font-size:13.5px; margin:14px 0 4px;}
+  .detail-grid dt{color:var(--ink-soft);}
+  .detail-grid dd{margin:0;}
+  .action-links{display:flex; gap:10px; flex-wrap:wrap;}
+  .action-links a{font-size:12.5px; color:var(--stamp); cursor:pointer;}
+  .action-links a.danger{color:var(--bad);}
+  .toolbar input, .toolbar select{width:auto; flex:1; min-width:150px;}
+  .empty{color:var(--ink-soft); font-size:13.5px; padding:20px 0;}
+  .card-box{border:1px solid var(--line); border-radius:4px; padding:18px; margin-bottom:14px; background:var(--card);}
+  .card-box h4{margin:0 0 6px; font-size:14.5px;}
+  .card-box .meta{color:var(--ink-soft); font-size:12.5px; margin-bottom:10px;}
+  .row-actions{display:flex; gap:8px; margin-top:10px;}
+  .two-col{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  @media (max-width:720px){
+    .shell{flex-direction:column;}
+    .nav{width:100%; display:flex; overflow-x:auto; padding:10px 12px; border-right:none; border-bottom:1px solid var(--line);}
+    .nav a{border-left:none; border-bottom:3px solid transparent; white-space:nowrap; padding:8px 14px;}
+    .nav a.active{border-left-color:transparent; border-bottom-color:var(--stamp);}
+    .two-col{grid-template-columns:1fr;}
+  }
+
+  /* liveness camera modal */
+  .modal-backdrop{position:fixed; inset:0; background:rgba(32,41,58,0.55); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px;}
+  .modal-box{background:var(--card); border-radius:6px; padding:24px; width:100%; max-width:380px; text-align:center;}
+  .modal-box h4{margin:0 0 6px;}
+  .cam-wrap{position:relative; width:280px; height:210px; margin:16px auto; border-radius:6px; overflow:hidden; background:#111;}
+  .cam-wrap video, .cam-wrap canvas{position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover;}
+  .cam-status{font-size:13px; color:var(--ink-soft); min-height:18px; margin-bottom:10px;}
+  .cam-status.ok{color:var(--good); font-weight:600;}
+  .cam-status.bad{color:var(--bad); font-weight:600;}
+  .kpi-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px;}
+  .kpi-card{border:1px solid var(--line); border-radius:4px; padding:16px; background:var(--card);}
+  .kpi-card .kpi-num{font-family:'Space Grotesk'; font-size:26px; font-weight:600;}
+  .kpi-card .kpi-label{font-size:12px; color:var(--ink-soft); margin-top:2px;}
+  .bar-track{background:#EEE8D9; border-radius:100px; height:8px; overflow:hidden; margin-top:8px;}
+  .bar-fill{background:var(--stamp); height:100%; border-radius:100px;}
+  .skeleton{background:linear-gradient(90deg,#EFEAE0 25%,#F6F2E8 37%,#EFEAE0 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; border-radius:3px;}
+  @keyframes sk{0%{background-position:100% 0;}100%{background-position:0 0;}}
+  .timeline{border-left:2px solid var(--line); margin-left:8px; padding-left:20px;}
+  .timeline-item{position:relative; padding-bottom:22px;}
+  .timeline-item::before{content:''; position:absolute; left:-25px; top:3px; width:10px; height:10px; border-radius:50%; background:var(--stamp);}
+  .timeline-item h5{margin:0 0 4px; font-size:14px;}
+  .timeline-item .meta{color:var(--ink-soft); font-size:12px;}
+  @media (max-width:720px){
+    .kpi-grid{grid-template-columns:repeat(2,1fr);}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+// ---------- KONFIGURASI SUPABASE (project milik user) ----------
+const SUPABASE_URL = "https://kqljftwwepnfgxqaufhk.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_4jUk9xjSfzL1jQg0IK0cMw_fevXMsBF";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const root = document.getElementById('root');
+let state = { view:'loading', tab:'clock', session:null, employee:null, company:null, err:null, msg:null, busy:false };
+
+function setState(patch){ state = {...state, ...patch}; render(); }
+function defaultTabFor(role){ return role === 'admin' ? 'dashboard' : 'clock'; }
+function fmtTime(d){ return new Date(d).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDateTime(d){ return new Date(d).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function fmtDate(d){ return new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}); }
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371000, toRad=x=>x*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLng=toRad(lng2-lng1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R * 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+const TYPE_LABEL = { cuti:'Cuti', izin:'Izin', koreksi_absen:'Koreksi Absen', lembur:'Lembur', tukar_shift:'Tukar Shift' };
+const STATUS_LABEL = { pending_supervisor:'Menunggu Supervisor', pending_hr:'Menunggu HR', approved:'Disetujui', rejected:'Ditolak' };
+
+// ---------------- BOOTSTRAP ----------------
+async function boot(){
+  flushOfflineQueue();
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ setState({ view:'login', session:null, employee:null }); return; }
+  const pa = await fetchPlatformAdmin(session.user.id);
+  if(pa){ setState({ session, platformAdmin:pa, view:'platform-dashboard', tab:'companies' }); return; }
+  const emp = await fetchEmployee(session.user.id);
+  if(!emp){ setState({ view:'login', session:null, employee:null, err:'Akun belum terhubung ke data karyawan. Hubungi admin.' }); return; }
+  const company = await fetchCompany(emp.company_id);
+  setState({ session, employee: emp, company, view:'dashboard', tab:defaultTabFor(emp.role) });
+  ensureDeviceRegistered();
+  applyCompanyBrandingToPWA();
+}
+// PWA identity (name/icons/theme-color) is cosmetic — company_branding is
+// publicly readable, so this is safe pre- or post-branding-setup, and any
+// failure here must never block login/dashboard rendering.
+async function applyCompanyBrandingToPWA(){
+  try {
+    if(!state.employee?.company_id) return;
+    const { data } = await sb.from('company_branding')
+      .select('pwa_name, short_name, logo_192_url, logo_512_url, favicon_url, primary_color, background_color')
+      .eq('company_id', state.employee.company_id).maybeSingle();
+    if(!data) return; // keep the static default manifest/icon — never break the app over this
+    const name = (data.pwa_name || data.short_name || state.company?.name || 'Absensi').slice(0, 45);
+    const icons = [];
+    if(data.logo_192_url) icons.push({ src: data.logo_192_url, sizes:'192x192', type:'image/webp', purpose:'any' });
+    if(data.logo_512_url) icons.push({ src: data.logo_512_url, sizes:'512x512', type:'image/webp', purpose:'any' });
+    if(icons.length > 0){
+      const manifest = {
+        name, short_name: name.slice(0, 24), start_url:'./index.html', scope:'./', display:'standalone',
+        background_color: data.background_color || '#FAF7F1', theme_color: data.primary_color || '#20293A', icons
+      };
+      const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type:'application/json' }));
+      document.querySelector('#app-manifest')?.setAttribute('href', blobUrl);
+    }
+    if(data.primary_color) document.querySelector('#app-theme-color')?.setAttribute('content', data.primary_color);
+    if(data.favicon_url){
+      let fav = document.querySelector('#app-favicon');
+      if(!fav){ fav = document.createElement('link'); fav.id = 'app-favicon'; fav.rel = 'icon'; document.head.appendChild(fav); }
+      fav.setAttribute('href', data.favicon_url);
+    }
+    // iOS Safari ignores manifest.json icons entirely for "Add to Home
+    // Screen" — it only reads apple-touch-icon.
+    const appleIconSrc = data.logo_512_url || data.logo_192_url;
+    if(appleIconSrc){
+      let appleIcon = document.querySelector('#app-apple-icon');
+      if(!appleIcon){ appleIcon = document.createElement('link'); appleIcon.id = 'app-apple-icon'; appleIcon.rel = 'apple-touch-icon'; document.head.appendChild(appleIcon); }
+      appleIcon.setAttribute('href', appleIconSrc);
+    }
+    document.querySelector('#app-apple-title')?.setAttribute('content', name.slice(0, 24));
+    document.title = name;
+  } catch(e){ /* cosmetic only — silently keep platform defaults */ }
+}
+async function fetchEmployee(authUserId){
+  const { data, error } = await sb.from('employees').select('*').eq('auth_user_id', authUserId).maybeSingle();
+  if(error || !data) return null;
+  return data;
+}
+async function fetchCompany(companyId){
+  const { data } = await sb.from('companies').select('*').eq('id', companyId).maybeSingle();
+  return data || null;
+}
+async function fetchPlatformAdmin(authUserId){
+  const { data } = await sb.from('platform_admins').select('*').eq('auth_user_id', authUserId).maybeSingle();
+  return data || null;
+}
+sb.auth.onAuthStateChange((event) => { if(event === 'SIGNED_OUT'){ setState({ view:'login', session:null, employee:null, platformAdmin:null }); } });
+
+// ---------------- ACTIONS: AUTH ----------------
+async function doLogin(email, password){
+  setState({ busy:true, err:null });
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ setState({ busy:false, err:'Login gagal: ' + error.message }); return; }
+  const pa = await fetchPlatformAdmin(data.user.id);
+  if(pa){ setState({ busy:false, session:data.session, platformAdmin:pa, view:'platform-dashboard', tab:'companies' }); return; }
+  const emp = await fetchEmployee(data.user.id);
+  if(!emp){ setState({ busy:false, err:'Akun ini belum terhubung ke data karyawan manapun. Hubungi admin perusahaan.' }); return; }
+  const company = await fetchCompany(emp.company_id);
+  setState({ busy:false, session:data.session, employee:emp, company, view:'dashboard', tab:defaultTabFor(emp.role) });
+  ensureDeviceRegistered();
+}
+async function doRegisterEmployee(email, password){
+  setState({ busy:true, err:null });
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if(error){ setState({ busy:false, err:'Pendaftaran gagal: ' + error.message }); return; }
+  if(!data.session){ setState({ busy:false, msg:'Akun dibuat. Jika verifikasi email aktif, cek email dulu sebelum login.', view:'login' }); return; }
+  const emp = await fetchEmployee(data.user.id);
+  if(!emp){ setState({ busy:false, view:'login', err:'Akun dibuat, tapi belum ada data karyawan dengan email ini. Minta admin menambahkan email lo dulu.' }); return; }
+  const company = await fetchCompany(emp.company_id);
+  setState({ busy:false, session:data.session, employee:emp, company, view:'dashboard', tab:defaultTabFor(emp.role) });
+  ensureDeviceRegistered();
+}
+async function doSetupCompany({companyName, adminName, email, password}){
+  setState({ busy:true, err:null });
+  const { data:signData, error:sErr } = await sb.auth.signUp({ email, password });
+  if(sErr){ setState({ busy:false, err:'Pendaftaran login gagal: ' + sErr.message }); return; }
+  if(!signData.session){ setState({ busy:false, msg:'Akun dibuat. Jika verifikasi email aktif di project Supabase, konfirmasi dulu lalu ulangi setup ini untuk melanjutkan.', view:'login' }); return; }
+  const { data:company, error:cErr } = await sb.from('companies').insert({ name: companyName }).select().single();
+  if(cErr){ setState({ busy:false, err:'Akun dibuat, tapi gagal membuat perusahaan: ' + cErr.message }); return; }
+  const { error:eErr } = await sb.from('employees').insert({ company_id: company.id, name: adminName, email, role:'admin', auth_user_id: signData.user.id });
+  if(eErr){ setState({ busy:false, err:'Perusahaan dibuat, tapi gagal menyiapkan akun admin: ' + eErr.message }); return; }
+  const emp = await fetchEmployee(signData.user.id);
+  setState({ busy:false, session:signData.session, company, employee:emp, view:'dashboard', tab:defaultTabFor(emp.role) });
+  ensureDeviceRegistered();
+}
+async function doSetupPlatformAdmin({name, email, password}){
+  setState({ busy:true, err:null });
+  const { data:signData, error:sErr } = await sb.auth.signUp({ email, password });
+  if(sErr){ setState({ busy:false, err:'Pendaftaran login gagal: ' + sErr.message }); return; }
+  if(!signData.session){ setState({ busy:false, msg:'Akun dibuat. Jika verifikasi email aktif, konfirmasi dulu lalu ulangi setup ini.', view:'login' }); return; }
+  const { error:pErr } = await sb.from('platform_admins').insert({ name, email, auth_user_id: signData.user.id });
+  if(pErr){ setState({ busy:false, err:'Gagal membuat akun super admin (mungkin sudah ada satu): ' + pErr.message }); return; }
+  const pa = await fetchPlatformAdmin(signData.user.id);
+  setState({ busy:false, session:signData.session, platformAdmin:pa, view:'platform-dashboard', tab:'companies' });
+}
+async function doLogout(){ stopFieldVisitTracking(); await sb.auth.signOut(); setState({ view:'login', session:null, employee:null, platformAdmin:null }); }
+
+// ---------------- DATA CACHES ----------------
+let openAttendance = null, myHistory = [], employeeList = [], recapList = [];
+let locationsList = [], shiftsList = [], myLeaveRequests = [], pendingApprovals = [];
+let myHistoryLoaded = false, employeeListLoaded = false, recapListLoaded = false;
+let locationsLoaded = false, shiftsLoaded = false, myLeaveLoaded = false, pendingApprovalsLoaded = false;
+
+async function loadOpenAttendance(){
+  const { data } = await sb.from('attendance').select('*').eq('employee_id', state.employee.id).is('clock_out', null).order('clock_in',{ascending:false}).limit(1).maybeSingle();
+  openAttendance = data || null; render();
+}
+async function loadMyHistory(){
+  const { data } = await sb.from('attendance').select('*').eq('employee_id', state.employee.id).order('clock_in',{ascending:false}).limit(50);
+  myHistory = data || []; myHistoryLoaded = true; render();
+}
+async function loadEmployeeList(){
+  const { data } = await sb.from('employees').select('*').eq('company_id', state.employee.company_id).order('created_at',{ascending:false});
+  employeeList = data || []; employeeListLoaded = true; render();
+}
+async function loadRecap(){
+  const { data } = await sb.from('attendance').select('*, employees(name,nip)').eq('company_id', state.employee.company_id).order('clock_in',{ascending:false}).limit(100);
+  recapList = data || []; recapListLoaded = true; render();
+}
+async function loadLocations(){
+  const { data } = await sb.from('locations').select('*').eq('company_id', state.employee.company_id).order('created_at');
+  locationsList = data || []; locationsLoaded = true; render();
+}
+async function loadShifts(){
+  const { data } = await sb.from('shifts').select('*').eq('company_id', state.employee.company_id).order('created_at');
+  shiftsList = data || []; shiftsLoaded = true; render();
+}
+async function loadMyLeaveRequests(){
+  const { data } = await sb.from('leave_requests').select('*').eq('employee_id', state.employee.id).order('created_at',{ascending:false});
+  myLeaveRequests = data || []; myLeaveLoaded = true; render();
+}
+async function loadPendingApprovals(){
+  let q = sb.from('leave_requests').select('*, employees(name,nip)').eq('company_id', state.employee.company_id);
+  q = state.employee.role === 'admin' ? q.in('status',['pending_hr']) : q.eq('status','pending_supervisor');
+  const { data } = await q.order('created_at',{ascending:false});
+  pendingApprovals = data || []; pendingApprovalsLoaded = true; render();
+}
+
+// ---------------- ACTIONS: CLOCK IN/OUT (with geofence + shift status) ----------------
+function getLocation(){
+  return new Promise((resolve) => {
+    if(!navigator.geolocation){ resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(pos => resolve({ lat:pos.coords.latitude, lng:pos.coords.longitude, accuracy:pos.coords.accuracy }), () => resolve(null), { enableHighAccuracy:true, timeout:12000, maximumAge:0 });
+  });
+}
+function checkGeofence(loc){
+  if(!loc || locationsList.length === 0) return { within:null, distance:null };
+  let best = null;
+  for(const l of locationsList){
+    const d = haversine(loc.lat, loc.lng, l.lat, l.lng);
+    if(best === null || d < best.distance) best = { distance:d, within: d <= l.radius_meters };
+  }
+  return best;
+}
+function computeAttendanceMeta(){
+  const shift = shiftsList.find(s => s.id === state.employee.shift_id);
+  if(!shift) return { status:'hadir', lateMinutes:0, penalty:0 };
+  const now = new Date();
+  const [h,m] = shift.start_time.split(':').map(Number);
+  const shiftStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+  const rawLateMinutes = Math.max(0, Math.round((now - shiftStart) / 60000));
+  const tolerance = state.company?.late_tolerance_minutes ?? 15;
+  const penaltyRate = state.company?.penalty_per_minute ?? 0;
+  if(rawLateMinutes <= tolerance) return { status:'hadir', lateMinutes:0, penalty:0 };
+  const billableLate = rawLateMinutes - tolerance;
+  return { status:'terlambat', lateMinutes: billableLate, penalty: billableLate * penaltyRate };
+}
+// ---------------- AI FACIAL LIVENESS (face-api.js, jalan di browser) ----------------
+const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+let faceModelsLoaded = false;
+async function ensureFaceModels(){
+  if(faceModelsLoaded) return true;
+  try{
+    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL);
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODEL_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL);
+    faceModelsLoaded = true;
+    return true;
+  } catch(e){ return false; }
+}
+function eyeAspectRatio(eye){
+  const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+  const vertical = dist(eye[1],eye[5]) + dist(eye[2],eye[4]);
+  const horizontal = dist(eye[0],eye[3]);
+  return vertical / (2 * horizontal);
+}
+
+// Runs the camera + blink challenge inside the modal already in the DOM.
+// Resolves { selfieBlob, livenessPassed } or null if the user cancels.
+function runLivenessCapture(videoEl, statusEl){
+  return new Promise(async (resolve) => {
+    let stream = null, cancelled = false, rafId = null;
+    const cleanup = () => { cancelled = true; if(rafId) cancelAnimationFrame(rafId); if(stream) stream.getTracks().forEach(t=>t.stop()); };
+    document.getElementById('liveness-cancel').onclick = () => { cleanup(); resolve(null); };
+
+    statusEl.textContent = 'Menyiapkan kamera…'; statusEl.className = 'cam-status';
+    try{ stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' } }); }
+    catch(e){ statusEl.textContent = 'Kamera tidak bisa diakses.'; statusEl.className = 'cam-status bad'; setTimeout(()=>resolve({ selfieBlob:null, livenessPassed:false, descriptor:null }), 1200); return; }
+    videoEl.srcObject = stream; await videoEl.play();
+
+    const ok = await ensureFaceModels();
+    if(!ok){ statusEl.textContent = 'Model deteksi wajah gagal dimuat, absen tanpa liveness.'; statusEl.className='cam-status bad'; cleanup(); setTimeout(()=>resolve({ selfieBlob:null, livenessPassed:false, descriptor:null }), 1400); return; }
+
+    statusEl.textContent = 'Arahkan wajah ke kamera…';
+    let earHistory = [], blinkDetected = false, startTime = Date.now();
+    const TIMEOUT_MS = 8000;
+
+    async function loop(){
+      if(cancelled) return;
+      if(Date.now() - startTime > TIMEOUT_MS){
+        statusEl.textContent = 'Waktu habis, absen tanpa verifikasi liveness.'; statusEl.className = 'cam-status bad';
+        const blob = await captureFrame(videoEl);
+        cleanup(); resolve({ selfieBlob: blob, livenessPassed:false, descriptor:null }); return;
+      }
+      const det = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks(true).withFaceDescriptor();
+      if(det){
+        const lm = det.landmarks;
+        const leftEAR = eyeAspectRatio(lm.getLeftEye());
+        const rightEAR = eyeAspectRatio(lm.getRightEye());
+        const ear = (leftEAR + rightEAR) / 2;
+        earHistory.push(ear); if(earHistory.length > 10) earHistory.shift();
+        statusEl.textContent = 'Wajah terdeteksi — silakan berkedip…';
+        if(earHistory.length >= 5){
+          const min = Math.min(...earHistory), max = Math.max(...earHistory);
+          if(max - min > 0.09 && min < 0.19) blinkDetected = true;
+        }
+        if(blinkDetected){
+          statusEl.textContent = 'Liveness terverifikasi ✓'; statusEl.className = 'cam-status ok';
+          const blob = await captureFrame(videoEl);
+          cleanup(); resolve({ selfieBlob: blob, livenessPassed:true, descriptor: Array.from(det.descriptor) }); return;
+        }
+      } else {
+        statusEl.textContent = 'Wajah belum terdeteksi…';
+      }
+      rafId = requestAnimationFrame(loop);
+    }
+    loop();
+  });
+}
+function captureFrame(videoEl){
+  return new Promise((resolve) => {
+    const c = document.createElement('canvas');
+    c.width = videoEl.videoWidth || 320; c.height = videoEl.videoHeight || 240;
+    c.getContext('2d').drawImage(videoEl, 0, 0, c.width, c.height);
+    c.toBlob(blob => resolve(blob), 'image/jpeg', 0.85);
+  });
+}
+function openLivenessModal(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal-box">
+      <h4>Verifikasi Wajah</h4>
+      <div class="cam-wrap"><video id="liveness-video" muted playsinline></video></div>
+      <div class="cam-status" id="liveness-status">Menyiapkan kamera…</div>
+      <button class="pill-btn" id="liveness-cancel">Batalkan</button>
+    </div>`;
+  document.body.appendChild(modal);
+  return modal;
+}
+async function captureLiveness(){
+  const modal = openLivenessModal();
+  const video = modal.querySelector('#liveness-video');
+  const status = modal.querySelector('#liveness-status');
+  const result = await runLivenessCapture(video, status);
+  modal.remove();
+  return result; // null if user cancelled
+}
+function euclideanDistance(a, b){
+  let sum = 0; for(let i=0;i<a.length;i++) sum += (a[i]-b[i])**2; return Math.sqrt(sum);
+}
+const FACE_MATCH_THRESHOLD = 0.55;
+async function resolveFaceMatch(descriptor){
+  if(!descriptor) return { match:null, distance:null };
+  if(!state.employee.face_descriptor){
+    // Belum ada wajah referensi — capture pertama ini otomatis jadi referensi.
+    await sb.rpc('update_own_face', { descriptor, photo_url: null });
+    state.employee.face_descriptor = descriptor;
+    return { match:true, distance:0 };
+  }
+  const dist = euclideanDistance(descriptor, state.employee.face_descriptor);
+  return { match: dist <= FACE_MATCH_THRESHOLD, distance: dist };
+}
+
+async function uploadSelfie(blob){
+  if(!blob) return null;
+  const path = `${state.employee.company_id}/${state.employee.id}/${Date.now()}.jpg`;
+  const { error } = await sb.storage.from('selfies').upload(path, blob, { contentType:'image/jpeg' });
+  if(error) return null;
+  const { data } = await sb.storage.from('selfies').createSignedUrl(path, 60*60*24*30);
+  return data?.signedUrl || null;
+}
+
+// ---------------- OFFLINE QUEUE (pakai window.storage, bukan localStorage) ----------------
+async function queueOfflineAction(action){
+  let queue = [];
+  try{ const r = await window.storage.get('offline-queue', false); queue = r ? JSON.parse(r.value) : []; }catch(e){ queue = []; }
+  queue.push(action);
+  try{ await window.storage.set('offline-queue', JSON.stringify(queue), false); }catch(e){}
+}
+async function flushOfflineQueue(){
+  if(!navigator.onLine) return;
+  let queue = [];
+  try{ const r = await window.storage.get('offline-queue', false); queue = r ? JSON.parse(r.value) : []; }catch(e){ return; }
+  if(queue.length === 0) return;
+  const remaining = [];
+  for(const action of queue){
+    const { error } = await sb.from('attendance').insert(action);
+    if(error) remaining.push(action);
+  }
+  try{ await window.storage.set('offline-queue', JSON.stringify(remaining), false); }catch(e){}
+  if(remaining.length < queue.length) await loadOpenAttendance();
+}
+window.addEventListener('online', flushOfflineQueue);
+
+async function clockIn(){
+  if(!navigator.onLine){
+    setState({ busy:true, err:null });
+    const loc = await getLocation();
+    await queueOfflineAction({
+      company_id: state.employee.company_id, employee_id: state.employee.id,
+      clock_in_lat: loc?.lat ?? null, clock_in_lng: loc?.lng ?? null,
+      status:'hadir', offline_submitted:true
+    });
+    setState({ busy:false, msg:'Sedang offline — absen disimpan di perangkat, akan otomatis terkirim saat internet kembali.' });
+    return;
+  }
+  const liveness = getFeatures().face_verification ? await captureLiveness() : { selfieBlob:null, livenessPassed:null, descriptor:null };
+  if(liveness === null) return; // user cancelled
+  setState({ busy:true, err:null });
+  const loc = await getLocation();
+  const geo = checkGeofence(loc);
+  const meta = computeAttendanceMeta();
+  const faceResult = await resolveFaceMatch(liveness.descriptor);
+  const selfieUrl = await uploadSelfie(liveness.selfieBlob);
+  const { error } = await sb.from('attendance').insert({
+    company_id: state.employee.company_id, employee_id: state.employee.id,
+    clock_in_lat: loc?.lat ?? null, clock_in_lng: loc?.lng ?? null,
+    within_geofence: geo.within, distance_meters: geo.distance,
+    status: meta.status, late_minutes: meta.lateMinutes, penalty_amount: meta.penalty,
+    liveness_passed: liveness.livenessPassed, selfie_url: selfieUrl,
+    face_match: faceResult.match, face_distance: faceResult.distance
+  });
+  if(error){
+    const msg = error.code === '23505' ? 'Lo sudah absen masuk dan belum absen keluar. Refresh halaman ini.' : ('Gagal absen masuk: ' + error.message);
+    setState({ busy:false, err:msg }); return;
+  }
+  await loadOpenAttendance(); setState({ busy:false });
+}
+async function clockOut(){
+  if(!navigator.onLine){
+    setState({ busy:true, err:null });
+    setState({ busy:false, err:'Absen keluar butuh koneksi internet karena perlu mencocokkan data absen masuk sebelumnya.' });
+    return;
+  }
+  const liveness = getFeatures().face_verification ? await captureLiveness() : { selfieBlob:null, livenessPassed:null, descriptor:null };
+  if(liveness === null) return;
+  setState({ busy:true, err:null });
+  const loc = await getLocation();
+  const { error } = await sb.from('attendance').update({
+    clock_out: new Date().toISOString(), clock_out_lat: loc?.lat ?? null, clock_out_lng: loc?.lng ?? null
+  }).eq('id', openAttendance.id);
+  if(error){ setState({ busy:false, err:'Gagal absen keluar: ' + error.message }); return; }
+  await loadOpenAttendance(); setState({ busy:false });
+}
+
+// ---------------- ACTIONS: ADMIN — employees / locations / shifts ----------------
+async function addEmployee(nip, name, email){
+  setState({ busy:true, err:null });
+  const { error } = await sb.from('employees').insert({ company_id: state.employee.company_id, nip, name, email, role:'employee' });
+  if(error){ setState({ busy:false, err:'Gagal menambah karyawan: ' + error.message }); return; }
+  setState({ busy:false, msg:'Karyawan ditambahkan. Minta mereka daftar akun di halaman login dengan email ini.' });
+  await loadEmployeeList();
+}
+async function updateEmployeeAssignment(empId, shiftId, supervisorId, role){
+  await sb.from('employees').update({ shift_id: shiftId || null, supervisor_id: supervisorId || null, role }).eq('id', empId);
+  await loadEmployeeList();
+}
+async function addLocation(name, lat, lng, radius, type){
+  setState({ busy:true, err:null });
+  const { error } = await sb.from('locations').insert({ company_id: state.employee.company_id, name, lat, lng, radius_meters: radius, type: type||'office' });
+  if(error){ setState({ busy:false, err:'Gagal menambah lokasi: ' + error.message }); return; }
+  setState({ busy:false }); await loadLocations();
+}
+async function addShift(name, start, end){
+  setState({ busy:true, err:null });
+  const { error } = await sb.from('shifts').insert({ company_id: state.employee.company_id, name, start_time:start, end_time:end });
+  if(error){ setState({ busy:false, err:'Gagal menambah shift: ' + error.message }); return; }
+  setState({ busy:false }); await loadShifts();
+}
+async function updatePenaltySettings(tolerance, rate){
+  setState({ busy:true, err:null });
+  const { data, error } = await sb.from('companies').update({ late_tolerance_minutes: tolerance, penalty_per_minute: rate }).eq('id', state.employee.company_id).select().single();
+  if(error){ setState({ busy:false, err:'Gagal menyimpan pengaturan: ' + error.message }); return; }
+  setState({ busy:false, company:data, msg:'Pengaturan penalti disimpan.' });
+}
+
+// ---------------- ACTIONS: LEAVE REQUESTS ----------------
+async function submitLeaveRequest(type, startDate, endDate, reason, originalTime, requestedTime){
+  setState({ busy:true, err:null });
+  const { error } = await sb.from('leave_requests').insert({
+    company_id: state.employee.company_id, employee_id: state.employee.id,
+    type, start_date:startDate, end_date:endDate, reason,
+    original_time: originalTime || null, requested_time: requestedTime || null
+  });
+  if(error){ setState({ busy:false, err:'Gagal mengirim pengajuan: ' + error.message }); return; }
+  setState({ busy:false, msg:'Pengajuan terkirim.' }); await loadMyLeaveRequests();
+}
+async function decideAsSupervisor(id, approve, note){
+  setState({ busy:true });
+  await sb.from('leave_requests').update({
+    status: approve ? 'pending_hr' : 'rejected', supervisor_note: note,
+    decided_at: approve ? null : new Date().toISOString()
+  }).eq('id', id);
+  setState({ busy:false }); await loadPendingApprovals();
+}
+async function decideAsHR(id, approve, note){
+  setState({ busy:true });
+  await sb.from('leave_requests').update({
+    status: approve ? 'approved' : 'rejected', hr_note: note, decided_at: new Date().toISOString()
+  }).eq('id', id);
+  setState({ busy:false }); await loadPendingApprovals();
+}
+
+// ---------------- ADMIN DASHBOARD (KPI) ----------------
+let dashboardStats = null;
+async function loadDashboardStats(){
+  const companyId = state.employee.company_id;
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const todayIso = todayStart.toISOString();
+  const todayDateStr = todayStart.toISOString().slice(0,10);
+
+  const [{ data: emps }, { data: todaysAttendance }, { data: onLeave }, { data: pending }] = await Promise.all([
+    sb.from('employees').select('id, role').eq('company_id', companyId),
+    sb.from('attendance').select('employee_id, status').eq('company_id', companyId).gte('clock_in', todayIso),
+    sb.from('leave_requests').select('employee_id').eq('company_id', companyId).eq('status','approved').lte('start_date', todayDateStr).gte('end_date', todayDateStr),
+    sb.from('leave_requests').select('id').eq('company_id', companyId).in('status', ['pending_supervisor','pending_hr'])
+  ]);
+
+  const totalEmployees = (emps||[]).length;
+  const presentIds = new Set((todaysAttendance||[]).map(a => a.employee_id));
+  const present = presentIds.size;
+  const late = (todaysAttendance||[]).filter(a => a.status === 'terlambat').length;
+  const onLeaveCount = new Set((onLeave||[]).map(l => l.employee_id)).size;
+  const absent = Math.max(0, totalEmployees - present - onLeaveCount);
+
+  dashboardStats = {
+    totalEmployees, present, late, absent, onLeave: onLeaveCount,
+    attendanceRate: totalEmployees ? Math.round((present/totalEmployees)*100) : 0,
+    lateRate: present ? Math.round((late/present)*100) : 0,
+    pendingApproval: (pending||[]).length
+  };
+  render();
+}
+
+// ---------------- P2: ORGANIZATION STRUCTURE ----------------
+let branchesList = [], divisionsList = [], departmentsList = [], positionsList = [], orgLoaded = false;
+async function loadOrgData(){
+  const cid = state.employee.company_id;
+  const [{data:br},{data:dv},{data:dp},{data:ps}] = await Promise.all([
+    sb.from('branches').select('*').eq('company_id',cid).order('created_at'),
+    sb.from('divisions').select('*').eq('company_id',cid).order('created_at'),
+    sb.from('departments').select('*').eq('company_id',cid).order('created_at'),
+    sb.from('positions').select('*').eq('company_id',cid).order('created_at')
+  ]);
+  branchesList = br||[]; divisionsList = dv||[]; departmentsList = dp||[]; positionsList = ps||[];
+  orgLoaded = true; render();
+}
+async function addOrgUnit(table, name, extra){
+  setState({ busy:true, err:null });
+  const { error } = await sb.from(table).insert({ company_id: state.employee.company_id, name, ...(extra||{}) });
+  if(error){ setState({ busy:false, err:'Gagal menambah: ' + error.message }); return; }
+  setState({ busy:false }); await loadOrgData();
+}
+async function updateEmployeeOrg(empId, branchId, divisionId, departmentId, positionId){
+  await sb.from('employees').update({ branch_id:branchId||null, division_id:divisionId||null, department_id:departmentId||null, position_id:positionId||null }).eq('id', empId);
+  await loadEmployeeList();
+}
+
+// ---------------- P2: REPORTS ----------------
+let reportRows = null;
+async function runReport(startDate, endDate){
+  const { data } = await sb.from('attendance').select('*, employees(name,nip)')
+    .eq('company_id', state.employee.company_id)
+    .gte('clock_in', startDate + 'T00:00:00').lte('clock_in', endDate + 'T23:59:59')
+    .order('clock_in',{ascending:false});
+  reportRows = data || []; render();
+}
+function exportReportXlsx(){
+  if(!reportRows) return;
+  const ws = XLSX.utils.json_to_sheet(reportRows.map(a => ({
+    'Nama': a.employees?.name||'', 'NIP': a.employees?.nip||'', 'Tanggal': fmtDate(a.clock_in),
+    'Masuk': fmtTime(a.clock_in), 'Keluar': a.clock_out?fmtTime(a.clock_out):'', 'Status': a.status,
+    'Menit Telat': a.late_minutes||0, 'Potongan': a.penalty_amount||0
+  })));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Laporan');
+  XLSX.writeFile(wb, `laporan-absensi.xlsx`);
+}
+
+// ---------------- P2: DEVICE MANAGEMENT ----------------
+let devicesList = [], devicesLoaded = false;
+async function ensureDeviceRegistered(){
+  if(!state.employee) return;
+  let fp = null;
+  try{ const r = await window.storage.get('device-fingerprint', false); fp = r ? JSON.parse(r.value) : null; }catch(e){ fp = null; }
+  if(!fp){
+    fp = 'dev_' + Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b=>b.toString(16).padStart(2,'0')).join('');
+    try{ await window.storage.set('device-fingerprint', JSON.stringify(fp), false); }catch(e){}
+  }
+  const isMobile = /Mobi|Android|iPhone/i.test(navigator.userAgent);
+  await sb.from('devices').upsert({
+    company_id: state.employee.company_id, employee_id: state.employee.id, device_fingerprint: fp,
+    os: navigator.platform || 'unknown', device_type: isMobile ? 'mobile' : 'desktop', last_active: new Date().toISOString()
+  }, { onConflict: 'employee_id,device_fingerprint' });
+}
+async function loadDevices(){
+  const { data } = await sb.from('devices').select('*, employees(name,nip)').eq('company_id', state.employee.company_id).order('last_active',{ascending:false});
+  devicesList = data || []; devicesLoaded = true; render();
+}
+async function resetDevice(id){
+  await sb.from('devices').update({ status:'replaced' }).eq('id', id);
+  await loadDevices();
+}
+
+// ---------------- P2: AUDIT TRAIL ----------------
+let auditLogList = [], auditLoaded = false;
+async function loadAuditLog(){
+  const { data } = await sb.from('audit_log').select('*').eq('company_id', state.employee.company_id).order('created_at',{ascending:false}).limit(100);
+  auditLogList = data || []; auditLoaded = true; render();
+}
+
+// ---------------- P2: BACKUP CENTER ----------------
+let backupsList = [], backupsLoaded = false;
+async function loadBackups(){
+  const { data } = await sb.from('backups').select('*').eq('company_id', state.employee.company_id).order('created_at',{ascending:false});
+  backupsList = data || []; backupsLoaded = true; render();
+}
+async function createBackup(){
+  setState({ busy:true, err:null });
+  const cid = state.employee.company_id;
+  const [{data:emps},{data:att},{data:leaves}] = await Promise.all([
+    sb.from('employees').select('*').eq('company_id',cid),
+    sb.from('attendance').select('*').eq('company_id',cid),
+    sb.from('leave_requests').select('*').eq('company_id',cid)
+  ]);
+  const payload = JSON.stringify({ exported_at:new Date().toISOString(), employees:emps||[], attendance:att||[], leave_requests:leaves||[] }, null, 2);
+  const blob = new Blob([payload], { type:'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
+  const { error } = await sb.from('backups').insert({ company_id: cid, type:'json', size_bytes: blob.size, status:'completed', created_by: state.employee.id });
+  setState({ busy:false, err: error ? 'Backup didownload, tapi gagal mencatat log: ' + error.message : null, msg: error ? null : 'Backup berhasil didownload.' });
+  await loadBackups();
+}
+
+// ---------------- P4: FIELD VISIT & LIVE TRACKING ----------------
+let myFieldVisit = null, myFieldVisitLoaded = false;
+let fieldVisitTimer = null;
+async function loadMyFieldVisit(){
+  const { data } = await sb.from('field_visits').select('*').eq('employee_id', state.employee.id).eq('status','active').maybeSingle();
+  myFieldVisit = data || null; myFieldVisitLoaded = true; render();
+  if(myFieldVisit) startFieldVisitTracking(myFieldVisit.id);
+}
+async function startFieldVisit(purpose){
+  setState({ busy:true, err:null });
+  const { data, error } = await sb.from('field_visits').insert({
+    company_id: state.employee.company_id, employee_id: state.employee.id, purpose
+  }).select().single();
+  if(error){ setState({ busy:false, err:'Gagal memulai kunjungan: ' + error.message }); return; }
+  myFieldVisit = data; setState({ busy:false });
+  startFieldVisitTracking(data.id);
+}
+async function endFieldVisit(){
+  if(!myFieldVisit) return;
+  setState({ busy:true, err:null });
+  stopFieldVisitTracking();
+  await sb.from('field_visits').update({ status:'completed', end_time:new Date().toISOString() }).eq('id', myFieldVisit.id);
+  myFieldVisit = null; setState({ busy:false });
+}
+function startFieldVisitTracking(visitId){
+  if(fieldVisitTimer) return;
+  const recordPoint = () => {
+    if(!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(pos => {
+      sb.from('field_visit_points').insert({ field_visit_id: visitId, lat: pos.coords.latitude, lng: pos.coords.longitude });
+    }, () => {}, { enableHighAccuracy:true, timeout: 12000, maximumAge:0 });
+  };
+  recordPoint();
+  fieldVisitTimer = setInterval(recordPoint, 60000);
+}
+function stopFieldVisitTracking(){ if(fieldVisitTimer){ clearInterval(fieldVisitTimer); fieldVisitTimer = null; } }
+
+let activeFieldVisits = [], activeFieldVisitsLoaded = false;
+async function loadActiveFieldVisits(){
+  const { data } = await sb.from('field_visits').select('*, employees(name,nip)').eq('company_id', state.employee.company_id).eq('status','active').order('start_time',{ascending:false});
+  activeFieldVisits = data || [];
+  for(const v of activeFieldVisits){
+    const { data:pts } = await sb.from('field_visit_points').select('*').eq('field_visit_id', v.id).order('recorded_at',{ascending:false}).limit(1);
+    v.lastPoint = pts && pts[0] ? pts[0] : null;
+  }
+  activeFieldVisitsLoaded = true; render();
+}
+
+// ---------------- PLATFORM ADMIN: companies, license, billing ----------------
+let allCompanies = [], companyInvoices = [], invoiceCompanyId = null;
+let allCompaniesLoaded = false, companyInvoicesLoaded = false;
+let companyEmployeeStats = {}; // { [company_id]: { count, adminName } }
+let companyFilter = { q:'', status:'all', plan:'all' };
+const LICENSE_LABEL = { trial:'Trial', active:'Active', expired:'Expired', suspended:'Suspended', archived:'Archived' };
+
+async function loadAllCompanies(){
+  const { data } = await sb.from('companies').select('*').order('created_at',{ascending:false});
+  allCompanies = data || [];
+  await loadCompanyEmployeeStats();
+  allCompaniesLoaded = true; render();
+}
+async function loadCompanyEmployeeStats(){
+  if(allCompanies.length === 0){ companyEmployeeStats = {}; return; }
+  const ids = allCompanies.map(c => c.id);
+  const { data } = await sb.from('employees').select('company_id, name, role').in('company_id', ids);
+  const stats = {};
+  (data||[]).forEach(e => {
+    if(!stats[e.company_id]) stats[e.company_id] = { count:0, adminName:null };
+    stats[e.company_id].count += 1;
+    if(e.role === 'admin' && !stats[e.company_id].adminName) stats[e.company_id].adminName = e.name;
+  });
+  companyEmployeeStats = stats;
+}
+function filteredCompanies(){
+  const q = companyFilter.q.trim().toLowerCase();
+  return allCompanies.filter(c => {
+    if(companyFilter.status !== 'all' && c.license_status !== companyFilter.status) return false;
+    if(companyFilter.plan !== 'all' && c.plan !== companyFilter.plan) return false;
+    if(!q) return true;
+    const admin = (companyEmployeeStats[c.id]?.adminName || '').toLowerCase();
+    return c.name.toLowerCase().includes(q) || admin.includes(q);
+  });
+}
+async function createCompany(payload, formEl){
+  const btn = formEl.querySelector('#ac-submit'), errBox = formEl.querySelector('#ac-err');
+  if(!payload.name || !payload.adminName || !payload.adminEmail){
+    errBox.textContent = 'Nama perusahaan, nama admin, dan email admin wajib diisi.'; errBox.style.display='block'; return;
+  }
+  btn.disabled = true; btn.textContent = 'Menyimpan…'; errBox.style.display='none';
+  const { data:company, error:cErr } = await sb.from('companies').insert({
+    name: payload.name, plan: payload.plan, license_status:'trial',
+    start_date: payload.startDate || new Date().toISOString().slice(0,10),
+    end_date: payload.endDate || null
+  }).select().single();
+  if(cErr){ errBox.textContent = 'Gagal membuat perusahaan: ' + cErr.message; errBox.style.display='block'; btn.disabled=false; btn.textContent='Buat Perusahaan'; return; }
+  const { error:eErr } = await sb.from('employees').insert({ company_id: company.id, name: payload.adminName, email: payload.adminEmail, role:'admin' });
+  if(eErr){ errBox.textContent = 'Perusahaan dibuat, tapi gagal menyiapkan admin: ' + eErr.message; errBox.style.display='block'; btn.disabled=false; btn.textContent='Buat Perusahaan'; return; }
+  closeModal();
+  setState({ msg: `Perusahaan "${payload.name}" berhasil dibuat. Admin (${payload.adminEmail}) tinggal daftar akun dengan email itu untuk otomatis terhubung.` });
+  await loadAllCompanies();
+}
+async function saveCompanyEdit(companyId, patch, formEl){
+  const btn = formEl.querySelector('#ec-submit'), errBox = formEl.querySelector('#ec-err');
+  if(!patch.name){ errBox.textContent = 'Nama perusahaan wajib diisi.'; errBox.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = 'Menyimpan…'; errBox.style.display='none';
+  const { error } = await sb.from('companies').update(patch).eq('id', companyId);
+  if(error){ errBox.textContent = 'Gagal menyimpan: ' + error.message; errBox.style.display='block'; btn.disabled=false; btn.textContent='Simpan Perubahan'; return; }
+  closeModal();
+  setState({ msg: 'Perubahan perusahaan disimpan.' });
+  await loadAllCompanies();
+}
+async function setCompanyStatus(companyId, status, successMsg){
+  await sb.from('companies').update({ license_status: status }).eq('id', companyId);
+  closeModal();
+  setState({ msg: successMsg });
+  await loadAllCompanies();
+}
+async function loadInvoicesForCompany(companyId){
+  invoiceCompanyId = companyId;
+  const { data } = await sb.from('billing_invoices').select('*').eq('company_id', companyId).order('created_at',{ascending:false});
+  companyInvoices = data || []; companyInvoicesLoaded = true; render();
+}
+async function addInvoice(companyId, period, amount, status){
+  setState({ busy:true, err:null });
+  const { error } = await sb.from('billing_invoices').insert({ company_id: companyId, period, amount, status });
+  if(error){ setState({ busy:false, err:'Gagal menambah tagihan: ' + error.message }); return; }
+  setState({ busy:false }); await loadInvoicesForCompany(companyId);
+}
+
+// ---------------- COMPANY ADMIN: BRANDING & PAGE BUILDER ----------------
+let brandingData = null, brandingDraft = null, brandingLoaded = false;
+let brandingVersions = [], brandingVersionsLoaded = false;
+const BRANDING_DEFAULTS = { primary_color:'#1E3A5F', secondary_color:'#6B7280', background_color:'#FAF7F1', text_color:'#20293A' };
+
+async function loadBranding(){
+  const { data } = await sb.from('company_branding').select('*').eq('company_id', state.employee.company_id).maybeSingle();
+  // Fallback: platform default branding if the row somehow doesn't exist yet
+  // (e.g. a company created before this feature existed and never backfilled).
+  brandingData = data || { company_id: state.employee.company_id, ...BRANDING_DEFAULTS };
+  brandingDraft = { ...brandingData };
+  brandingLoaded = true; render();
+}
+async function loadBrandingVersions(){
+  const { data } = await sb.from('branding_versions').select('*').eq('company_id', state.employee.company_id).order('version',{ascending:false}).limit(15);
+  brandingVersions = data || []; brandingVersionsLoaded = true; render();
+}
+async function loadImageFromFile(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+    img.src = url;
+  });
+}
+// File-signature sniffing so we never trust the browser-reported MIME type
+// or the user-supplied filename (PRD requirement).
+async function sniffImageType(file){
+  const buf = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if(buf[0]===0x89 && buf[1]===0x50 && buf[2]===0x4E && buf[3]===0x47) return 'image/png';
+  if(buf[0]===0xFF && buf[1]===0xD8 && buf[2]===0xFF) return 'image/jpeg';
+  if(buf[0]===0x52 && buf[1]===0x49 && buf[2]===0x46 && buf[3]===0x46 && buf[8]===0x57 && buf[9]===0x45 && buf[10]===0x42 && buf[11]===0x50) return 'image/webp';
+  return null;
+}
+// Resize preserving aspect ratio, capped at maxDim, never upscaling beyond source.
+function drawContainMax(img, maxDim){
+  const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+  const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+  return canvas;
+}
+// Square canvas (for PWA/app icons): image is centered and never upscaled,
+// leftover space stays transparent so non-square logos don't get distorted.
+function drawContainSquare(img, size){
+  const scale = Math.min(size / img.width, size / img.height, 1);
+  const w = img.width * scale, h = img.height * scale;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  canvas.getContext('2d').drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+  return canvas;
+}
+function canvasToWebp(canvas, quality){ return new Promise(res => canvas.toBlob(b => res(b), 'image/webp', quality)); }
+// Start at quality 0.85 (PRD recommended 80-85) and step down only if the
+// output is still over the target size, down to a visual-quality floor.
+async function compressToTarget(canvas, targetBytes, startQuality=0.85, minQuality=0.5){
+  let quality = startQuality, blob = await canvasToWebp(canvas, quality);
+  while(blob && blob.size > targetBytes && quality > minQuality){ quality -= 0.1; blob = await canvasToWebp(canvas, quality); }
+  return blob;
+}
+function publicBrandingUrl(path){ return sb.storage.from('branding').getPublicUrl(path).data.publicUrl; }
+async function processAndUploadLogo(file){
+  if(file.size > 5*1024*1024) return { error:'File logo maksimal 5MB.' };
+  const sniffed = await sniffImageType(file);
+  if(!sniffed) return { error:'Format logo tidak didukung. Gunakan PNG, JPG, atau WebP.' };
+  let img; try { img = await loadImageFromFile(file); } catch(e){ return { error:'Gagal membaca file logo (file rusak/bukan gambar).' }; }
+  const target = 250*1024; // PRD: logo <250KB target
+  const [mainBlob, blob512, blob192] = await Promise.all([
+    compressToTarget(drawContainMax(img, 512), target),
+    compressToTarget(drawContainSquare(img, 512), target),
+    compressToTarget(drawContainSquare(img, 192), target)
+  ]);
+  if(!mainBlob || !blob512 || !blob192) return { error:'Gagal mengonversi logo ke WebP.' };
+  const base = `company/${state.employee.company_id}/branding`;
+  const results = await Promise.all([
+    sb.storage.from('branding').upload(`${base}/logo.webp`, mainBlob, { contentType:'image/webp', upsert:true }),
+    sb.storage.from('branding').upload(`${base}/logo-512.webp`, blob512, { contentType:'image/webp', upsert:true }),
+    sb.storage.from('branding').upload(`${base}/logo-192.webp`, blob192, { contentType:'image/webp', upsert:true })
+  ]);
+  const failed = results.find(r => r.error);
+  if(failed) return { error:'Upload logo gagal: ' + failed.error.message };
+  return {
+    logo_url: publicBrandingUrl(`${base}/logo.webp`),
+    logo_512_url: publicBrandingUrl(`${base}/logo-512.webp`),
+    logo_192_url: publicBrandingUrl(`${base}/logo-192.webp`),
+    finalKB: Math.round(mainBlob.size/1024)
+  };
+}
+async function processAndUploadFavicon(file){
+  if(file.size > 5*1024*1024) return { error:'File favicon maksimal 5MB.' };
+  const sniffed = await sniffImageType(file);
+  if(!sniffed) return { error:'Format favicon tidak didukung. Gunakan PNG, JPG, atau WebP.' };
+  let img; try { img = await loadImageFromFile(file); } catch(e){ return { error:'Gagal membaca file favicon (file rusak/bukan gambar).' }; }
+  const blob = await compressToTarget(drawContainSquare(img, 64), 50*1024);
+  if(!blob) return { error:'Gagal mengonversi favicon ke WebP.' };
+  const path = `company/${state.employee.company_id}/branding/favicon.webp`;
+  const { error } = await sb.storage.from('branding').upload(path, blob, { contentType:'image/webp', upsert:true });
+  if(error) return { error:'Upload favicon gagal: ' + error.message };
+  return { favicon_url: publicBrandingUrl(path) };
+}
+function withCacheBust(url, v){ if(!url) return url; return url + (url.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(v || ''); }
+async function saveBranding(patch, formEl){
+  const btn = formEl.querySelector('#br-save'), errBox = formEl.querySelector('#br-err');
+  btn.disabled = true; btn.textContent = 'Menyimpan…'; errBox.style.display='none';
+  const { data, error } = await sb.from('company_branding')
+    .upsert({ company_id: state.employee.company_id, ...patch }, { onConflict:'company_id' })
+    .select().single();
+  if(error){ errBox.textContent = 'Gagal menyimpan branding: ' + error.message; errBox.style.display='block'; btn.disabled=false; btn.textContent='Simpan'; return; }
+  brandingData = data; brandingDraft = { ...data };
+  brandingVersionsLoaded = false;
+  applyCompanyBrandingToPWA();
+  setState({ msg:'Branding berhasil disimpan.' });
+}
+function resetBrandingDraft(){
+  brandingDraft = { ...brandingDraft, ...BRANDING_DEFAULTS, short_name:'', tagline:'', login_title:'', login_subtitle:'', pwa_name:'' };
+  render();
+}
+async function restoreBrandingVersion(version){
+  const snap = { ...version.snapshot };
+  delete snap.company_id; delete snap.updated_at;
+  const { data, error } = await sb.from('company_branding').update(snap).eq('company_id', state.employee.company_id).select().single();
+  if(error){ setState({ err:'Gagal memulihkan versi: ' + error.message }); return; }
+  closeModal();
+  brandingData = data; brandingDraft = { ...data }; brandingVersionsLoaded = false;
+  setState({ msg:`Branding dipulihkan ke versi #${version.version}.` });
+}
+function openBrandingVersionModal(v){
+  const s = v.snapshot;
+  const el = openModal(`
+    <h4>Versi #${v.version}</h4>
+    <p class="lead" style="margin:2px 0 0;">Disimpan ${fmtDateTime(v.changed_at)}</p>
+    <dl class="detail-grid">
+      <dt>Short Name</dt><dd>${s.short_name || '—'}</dd>
+      <dt>Tagline</dt><dd>${s.tagline || '—'}</dd>
+      <dt>Login Title</dt><dd>${s.login_title || '—'}</dd>
+      <dt>Warna Primer</dt><dd><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${s.primary_color};vertical-align:middle;margin-right:6px;"></span>${s.primary_color}</dd>
+      <dt>Warna Sekunder</dt><dd><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${s.secondary_color};vertical-align:middle;margin-right:6px;"></span>${s.secondary_color}</dd>
+    </dl>
+    <div class="modal-actions">
+      <button class="pill-btn" id="bv-close">Tutup</button>
+      <button class="pill-btn good" id="bv-restore" style="flex:1;">Pulihkan Versi Ini</button>
+    </div>
+  `);
+  el.querySelector('#bv-close').onclick = closeModal;
+  el.querySelector('#bv-restore').onclick = () => restoreBrandingVersion(v);
+}
+
+// ---------------- COMPANY ADMIN: PAGE BUILDER (dashboard blocks + login page) ----------------
+let pageBlocks = [], pageBlocksLoaded = false;
+let pageBuilderSubTab = 'dashboard', loginPreviewMode = 'desktop';
+const BLOCK_LABEL = {
+  logo:'Logo', company_name:'Nama Perusahaan', welcome:'Pesan Selamat Datang',
+  attendance_card:'Kartu Absensi', clock_inout:'Tombol Clock In/Out', quick_actions:'Aksi Cepat',
+  announcement:'Pengumuman', leave_balance:'Sisa Cuti', shift:'Shift', location_status:'Status Lokasi', footer:'Footer'
+};
+async function loadPageBlocks(){
+  const { data } = await sb.from('company_page_blocks').select('*').eq('company_id', state.employee.company_id).order('sort_order');
+  pageBlocks = data || []; pageBlocksLoaded = true; render();
+}
+async function toggleBlock(block){
+  await sb.from('company_page_blocks').update({ is_enabled: !block.is_enabled }).eq('id', block.id);
+  pageBlocksLoaded = false; setState({ msg:null });
+}
+async function moveBlock(block, dir){
+  const idx = pageBlocks.findIndex(b => b.id === block.id);
+  const swapWith = pageBlocks[idx + dir];
+  if(!swapWith) return;
+  await Promise.all([
+    sb.from('company_page_blocks').update({ sort_order: swapWith.sort_order }).eq('id', block.id),
+    sb.from('company_page_blocks').update({ sort_order: block.sort_order }).eq('id', swapWith.id)
+  ]);
+  pageBlocksLoaded = false; setState({ msg:null });
+}
+function blockConfigSummary(b){
+  if(b.block_type === 'welcome' && b.config?.custom_text) return `Teks kustom: "${b.config.custom_text.slice(0,40)}"`;
+  if(b.block_type === 'footer' && b.config?.text) return `Teks: "${b.config.text.slice(0,40)}"`;
+  if(b.block_type === 'announcement') return `Maks ${b.config?.max_items || 3} pengumuman ditampilkan`;
+  return b.is_enabled ? 'Aktif di dashboard' : 'Disembunyikan dari dashboard';
+}
+function openBlockConfigModal(block){
+  const cfg = block.config || {};
+  let fieldHtml = '<p class="lead" style="margin:6px 0 0;">Blok ini tidak punya pengaturan tambahan — atur enable/disable & urutan dari daftar.</p>';
+  if(block.block_type === 'welcome') fieldHtml = `<label>Teks Sambutan Kustom (kosongkan untuk default)</label><textarea id="bc-field" rows="2">${cfg.custom_text || ''}</textarea>`;
+  else if(block.block_type === 'footer') fieldHtml = `<label>Teks Footer Dashboard</label><input id="bc-field" value="${cfg.text || ''}" placeholder="© 2026 Nama Perusahaan" />`;
+  else if(block.block_type === 'announcement') fieldHtml = `<label>Maks. Pengumuman Ditampilkan</label><input id="bc-field" type="number" min="1" max="10" value="${cfg.max_items || 3}" />`;
+  const hasField = fieldHtml.includes('id="bc-field"');
+  const el = openModal(`
+    <h4>${BLOCK_LABEL[block.block_type]}</h4>
+    ${fieldHtml}
+    <div class="field-err" id="bc-err" style="display:none;"></div>
+    <div class="modal-actions">
+      <button class="pill-btn" id="bc-cancel">${hasField ? 'Batal' : 'Tutup'}</button>
+      ${hasField ? `<button class="btn-main" id="bc-save" style="margin-top:0; flex:1;">Simpan</button>` : ''}
+    </div>
+  `);
+  el.querySelector('#bc-cancel').onclick = closeModal;
+  if(hasField){
+    el.querySelector('#bc-save').onclick = async () => {
+      const field = el.querySelector('#bc-field');
+      const newConfig = { ...cfg };
+      if(block.block_type === 'welcome') newConfig.custom_text = field.value.trim();
+      if(block.block_type === 'footer') newConfig.text = field.value.trim();
+      if(block.block_type === 'announcement') newConfig.max_items = Math.max(1, Math.min(10, parseInt(field.value) || 3));
+      const { error } = await sb.from('company_page_blocks').update({ config: newConfig }).eq('id', block.id);
+      if(error){ el.querySelector('#bc-err').textContent = 'Gagal menyimpan: ' + error.message; el.querySelector('#bc-err').style.display='block'; return; }
+      closeModal(); pageBlocksLoaded = false; setState({ msg:'Pengaturan blok disimpan.' });
+    };
+  }
+}
+async function processAndUploadBackground(file){
+  if(file.size > 5*1024*1024) return { error:'File background maksimal 5MB.' };
+  const sniffed = await sniffImageType(file);
+  if(!sniffed) return { error:'Format background tidak didukung. Gunakan PNG, JPG, atau WebP.' };
+  let img; try { img = await loadImageFromFile(file); } catch(e){ return { error:'Gagal membaca file background.' }; }
+  const blob = await compressToTarget(drawContainMax(img, 1600), 400*1024); // optimized for mobile per PRD
+  if(!blob) return { error:'Gagal mengonversi background ke WebP.' };
+  const path = `company/${state.employee.company_id}/branding/login-bg.webp`;
+  const { error } = await sb.storage.from('branding').upload(path, blob, { contentType:'image/webp', upsert:true });
+  if(error) return { error:'Upload background gagal: ' + error.message };
+  return { url: publicBrandingUrl(path) };
+}
+async function saveLoginPage(patch, formEl){
+  const btn = formEl.querySelector('#lp-save'), errBox = formEl.querySelector('#lp-err');
+  btn.disabled = true; btn.textContent = 'Menyimpan…'; errBox.style.display='none';
+  const { data, error } = await sb.from('company_branding')
+    .upsert({ company_id: state.employee.company_id, ...patch }, { onConflict:'company_id' })
+    .select().single();
+  if(error){ errBox.textContent = 'Gagal menyimpan: ' + error.message; errBox.style.display='block'; btn.disabled=false; btn.textContent='Simpan'; return; }
+  brandingData = data; brandingDraft = { ...data };
+  setState({ msg:'Login page berhasil disimpan.' });
+}
+
+// ---------------- COMPANY ADMIN: ANNOUNCEMENT BUILDER ----------------
+let announcements = [], announcementsLoaded = false, announcementFilterStatus = 'all';
+const ANNOUNCEMENT_STATUS_LABEL = { draft:'Draft', scheduled:'Scheduled', published:'Published', expired:'Expired', archived:'Archived' };
+const ANNOUNCEMENT_AUDIENCE_LABEL = { all:'Semua Karyawan', department:'Departemen', selected:'Karyawan Terpilih' };
+// Announcement content is user-authored free text — never interpolated as raw
+// HTML anywhere in the app. Always escape first, then convert newlines.
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function nl2br(escaped){ return escaped.replace(/\n/g, '<br/>'); }
+
+async function loadAnnouncements(){
+  const { data } = await sb.from('announcements').select('*').eq('company_id', state.employee.company_id).order('created_at',{ascending:false});
+  announcements = data || []; announcementsLoaded = true; render();
+}
+async function saveAnnouncement(payload, formEl, editingId){
+  const btn = formEl.querySelector('#an-submit'), errBox = formEl.querySelector('#an-err');
+  if(!payload.title || !payload.content){ errBox.textContent = 'Judul dan isi wajib diisi.'; errBox.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = 'Menyimpan…'; errBox.style.display='none';
+  const row = {
+    company_id: state.employee.company_id,
+    title: payload.title, content: payload.content,
+    start_date: payload.startDate, end_date: payload.endDate,
+    audience: payload.audience,
+    department_id: payload.audience === 'department' ? payload.departmentId : null,
+    status: payload.status,
+    created_by: state.employee.id
+  };
+  let res;
+  if(editingId) res = await sb.from('announcements').update(row).eq('id', editingId).select().single();
+  else res = await sb.from('announcements').insert(row).select().single();
+  if(res.error){ errBox.textContent = 'Gagal menyimpan: ' + res.error.message; errBox.style.display='block'; btn.disabled=false; btn.textContent = editingId?'Simpan Perubahan':'Buat Pengumuman'; return; }
+  if(payload.audience === 'selected'){
+    await sb.from('announcement_recipients').delete().eq('announcement_id', res.data.id);
+    if(payload.selectedIds.length) await sb.from('announcement_recipients').insert(payload.selectedIds.map(eid => ({ announcement_id: res.data.id, employee_id: eid })));
+  }
+  closeModal();
+  announcementsLoaded = false;
+  setState({ msg: editingId ? 'Pengumuman diperbarui.' : 'Pengumuman dibuat.' });
+}
+async function setAnnouncementStatus(id, status, msg){
+  await sb.from('announcements').update({ status }).eq('id', id);
+  announcementsLoaded = false; setState({ msg });
+}
+async function editAnnouncement(a){
+  if(a.audience === 'selected'){
+    const { data } = await sb.from('announcement_recipients').select('employee_id').eq('announcement_id', a.id);
+    a._selectedIds = (data || []).map(r => r.employee_id);
+  }
+  openAnnouncementModal(a);
+}
+function openAnnouncementModal(existing){
+  const isEdit = !!existing;
+  const a = existing || { title:'', content:'', start_date:'', end_date:'', audience:'all', department_id:null, status:'draft' };
+  if(!orgLoaded) loadOrgData();
+  if(!employeeListLoaded) loadEmployeeList();
+  const el = openModal(`
+    <h4>${isEdit ? 'Edit Pengumuman' : 'Buat Pengumuman'}</h4>
+    <label>Judul</label><input id="an-title" value="${escapeHtml(a.title)}" placeholder="cth: Libur Nasional 25 Desember" />
+    <label>Isi Pengumuman</label><textarea id="an-content" rows="4">${escapeHtml(a.content)}</textarea>
+    <label>Tanggal Mulai (opsional)</label><input id="an-start" type="date" value="${a.start_date || ''}" />
+    <label>Tanggal Berakhir (opsional)</label><input id="an-end" type="date" value="${a.end_date || ''}" />
+    <label>Audiens</label>
+    <select id="an-audience">
+      <option value="all" ${a.audience==='all'?'selected':''}>Semua Karyawan</option>
+      <option value="department" ${a.audience==='department'?'selected':''}>Departemen Tertentu</option>
+      <option value="selected" ${a.audience==='selected'?'selected':''}>Karyawan Terpilih</option>
+    </select>
+    <div id="an-audience-extra"></div>
+    <label>Status</label>
+    <select id="an-status">${Object.entries(ANNOUNCEMENT_STATUS_LABEL).map(([v,l]) => `<option value="${v}" ${a.status===v?'selected':''}>${l}</option>`).join('')}</select>
+    <div class="field-err" id="an-err" style="display:none;"></div>
+    <div class="modal-actions">
+      <button class="pill-btn" id="an-cancel">Batal</button>
+      <button class="btn-main" id="an-submit" style="margin-top:0; flex:1;">${isEdit ? 'Simpan Perubahan' : 'Buat Pengumuman'}</button>
+    </div>
+  `);
+  function renderAudienceExtra(){
+    const type = el.querySelector('#an-audience').value;
+    const box = el.querySelector('#an-audience-extra');
+    if(type === 'department'){
+      box.innerHTML = `<label>Departemen</label><select id="an-dept">${
+        !orgLoaded ? '<option>Memuat…</option>' :
+        (departmentsList.length ? departmentsList.map(d => `<option value="${d.id}" ${a.department_id===d.id?'selected':''}>${escapeHtml(d.name)}</option>`).join('') : '<option value="">Belum ada departemen</option>')
+      }</select>`;
+    } else if(type === 'selected'){
+      const preselected = a._selectedIds || [];
+      box.innerHTML = `<label>Pilih Karyawan</label><div style="max-height:140px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:8px;">${
+        !employeeListLoaded ? 'Memuat…' :
+        (employeeList.length ? employeeList.map(e => `<label style="display:flex; align-items:center; gap:6px; font-weight:400; margin:4px 0;"><input type="checkbox" class="an-emp-check" value="${e.id}" style="width:auto;" ${preselected.includes(e.id)?'checked':''}/> ${escapeHtml(e.name)}</label>`).join('') : 'Belum ada karyawan.')
+      }</div>`;
+    } else box.innerHTML = '';
+  }
+  renderAudienceExtra();
+  el.querySelector('#an-audience').onchange = renderAudienceExtra;
+  el.querySelector('#an-cancel').onclick = closeModal;
+  el.querySelector('#an-submit').onclick = () => {
+    const audience = el.querySelector('#an-audience').value;
+    saveAnnouncement({
+      title: el.querySelector('#an-title').value.trim(),
+      content: el.querySelector('#an-content').value.trim(),
+      startDate: el.querySelector('#an-start').value || null,
+      endDate: el.querySelector('#an-end').value || null,
+      audience, status: el.querySelector('#an-status').value,
+      departmentId: audience === 'department' ? (el.querySelector('#an-dept')?.value || null) : null,
+      selectedIds: audience === 'selected' ? Array.from(el.querySelectorAll('.an-emp-check:checked')).map(c => c.value) : []
+    }, el, existing?.id);
+  };
+}
+function renderAnnouncements(main){
+  if(!announcementsLoaded){
+    main.innerHTML = `<h3 class="section-title">Pengumuman</h3><div class="kpi-grid">${Array(3).fill(0).map(skeletonCard).join('')}</div>`;
+    loadAnnouncements();
+    return;
+  }
+  const list = announcementFilterStatus === 'all' ? announcements : announcements.filter(a => a.status === announcementFilterStatus);
+  main.innerHTML = `
+    <h3 class="section-title">Pengumuman</h3>
+    <p class="section-sub">Buat & kelola pengumuman. Muncul otomatis ke karyawan saat statusnya Published dan tanggal berjalan cocok — audiens & tanggal ditegakkan di level database, bukan cuma tampilan.</p>
+    <div class="toolbar">
+      <select id="an-filter">
+        <option value="all" ${announcementFilterStatus==='all'?'selected':''}>Semua Status</option>
+        ${Object.entries(ANNOUNCEMENT_STATUS_LABEL).map(([v,l]) => `<option value="${v}" ${announcementFilterStatus===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <div class="toolbar-right"><button class="pill-btn small" id="an-add">+ Buat Pengumuman</button></div>
+    </div>
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
+    <table><thead><tr><th>Judul</th><th>Audiens</th><th>Status</th><th>Mulai</th><th>Berakhir</th><th>Aksi</th></tr></thead>
+    <tbody id="an-rows"></tbody></table>
+  `;
+  main.querySelector('#an-filter').onchange = (e) => { announcementFilterStatus = e.target.value; renderAnnouncements(main); };
+  main.querySelector('#an-add').onclick = () => openAnnouncementModal(null);
+  const rows = main.querySelector('#an-rows');
+  if(list.length === 0){ rows.innerHTML = `<tr><td colspan="6" class="empty">Belum ada pengumuman.</td></tr>`; return; }
+  const tagClass = { published:'active', archived:'archived', expired:'expired', draft:'trial', scheduled:'trial' };
+  rows.innerHTML = list.map(a => `
+    <tr data-id="${a.id}">
+      <td>${escapeHtml(a.title)}</td>
+      <td>${ANNOUNCEMENT_AUDIENCE_LABEL[a.audience]}</td>
+      <td><span class="tag ${tagClass[a.status]}">${ANNOUNCEMENT_STATUS_LABEL[a.status]}</span></td>
+      <td>${a.start_date || '—'}</td>
+      <td>${a.end_date || '—'}</td>
+      <td><div class="action-links">
+        <a class="an-edit">Edit</a>
+        ${a.status !== 'published' ? '<a class="an-publish">Publish</a>' : '<a class="an-unpublish">Batalkan Publish</a>'}
+        ${a.status !== 'archived' ? '<a class="an-archive danger">Arsipkan</a>' : ''}
+      </div></td>
+    </tr>
+  `).join('');
+  rows.querySelectorAll('tr').forEach(tr => {
+    const a = announcements.find(x => x.id === tr.dataset.id);
+    tr.querySelector('.an-edit').onclick = () => editAnnouncement(a);
+    const pub = tr.querySelector('.an-publish'); if(pub) pub.onclick = () => setAnnouncementStatus(a.id, 'published', 'Pengumuman dipublish.');
+    const unpub = tr.querySelector('.an-unpublish'); if(unpub) unpub.onclick = () => setAnnouncementStatus(a.id, 'draft', 'Pengumuman ditarik ke draft.');
+    const arch = tr.querySelector('.an-archive'); if(arch) arch.onclick = () => openConfirmModal({
+      title:'Arsipkan Pengumuman?', body:`"${escapeHtml(a.title)}" tidak akan tampil lagi ke karyawan.`,
+      confirmLabel:'Ya, Arsipkan', danger:true, onConfirm: () => setAnnouncementStatus(a.id, 'archived', 'Pengumuman diarsipkan.')
+    });
+  });
+}
+// Read-only feed for the employee's own clock screen (additive — reuses the
+// same RLS-filtered visibility rules as the admin builder above).
+let announcementsFeed = [], announcementsFeedLoaded = false;
+async function loadAnnouncementsFeed(){
+  const { data } = await sb.from('announcements').select('id,title,content').eq('company_id', state.employee.company_id).eq('status','published').order('created_at',{ascending:false}).limit(5);
+  announcementsFeed = data || []; announcementsFeedLoaded = true; render();
+}
+
+// ---------------- GENERIC MODAL HELPER (used by Super Admin company management) ----------------
+let modalEl = null;
+function closeModal(){ if(modalEl){ modalEl.remove(); modalEl = null; } }
+function openModal(innerHtml, opts={}){
+  closeModal();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-backdrop';
+  wrap.innerHTML = `<div class="modal-box wide">${innerHtml}</div>`;
+  wrap.addEventListener('click', (e) => { if(e.target === wrap) closeModal(); });
+  document.body.appendChild(wrap);
+  modalEl = wrap;
+  return wrap.querySelector('.modal-box');
+}
+function openConfirmModal({title, body, confirmLabel, danger, onConfirm}){
+  const el = openModal(`
+    <h4>${title}</h4>
+    <p class="lead" style="margin:8px 0 0;">${body}</p>
+    <div class="modal-actions">
+      <button class="pill-btn" id="cf-cancel">Batal</button>
+      <button class="pill-btn ${danger?'bad':'good'}" id="cf-confirm" style="flex:1;">${confirmLabel}</button>
+    </div>
+  `);
+  el.querySelector('#cf-cancel').onclick = closeModal;
+  el.querySelector('#cf-confirm').onclick = () => onConfirm(el);
+}
+function openAddCompanyModal(){
+  const today = new Date().toISOString().slice(0,10);
+  const el = openModal(`
+    <h4>+ Tambah Perusahaan</h4>
+    <p class="lead" style="margin:2px 0 0;">Membuat perusahaan baru dan menyiapkan slot admin pertamanya.</p>
+    <label>Nama Perusahaan</label><input id="ac-name" placeholder="PT Contoh Sejahtera" />
+    <label>Paket</label><select id="ac-plan"><option value="basic">Basic</option><option value="enterprise">Enterprise</option></select>
+    <label>Nama Admin</label><input id="ac-admin-name" placeholder="Nama lengkap admin" />
+    <label>Email Admin</label><input id="ac-admin-email" type="email" placeholder="admin@perusahaan.com" />
+    <label>Tanggal Mulai</label><input id="ac-start" type="date" value="${today}" />
+    <label>Tanggal Berakhir (opsional)</label><input id="ac-end" type="date" />
+    <div class="field-err" id="ac-err"></div>
+    <div class="modal-actions">
+      <button class="pill-btn" id="ac-cancel">Batal</button>
+      <button class="btn-main" id="ac-submit" style="margin-top:0;">Buat Perusahaan</button>
+    </div>
+  `);
+  el.querySelector('#ac-cancel').onclick = closeModal;
+  el.querySelector('#ac-submit').onclick = () => createCompany({
+    name: el.querySelector('#ac-name').value.trim(),
+    plan: el.querySelector('#ac-plan').value,
+    adminName: el.querySelector('#ac-admin-name').value.trim(),
+    adminEmail: el.querySelector('#ac-admin-email').value.trim(),
+    startDate: el.querySelector('#ac-start').value,
+    endDate: el.querySelector('#ac-end').value || null
+  }, el);
+}
+function openEditCompanyModal(company){
+  const el = openModal(`
+    <h4>Edit Perusahaan</h4>
+    <label>Nama Perusahaan</label><input id="ec-name" value="${company.name}" />
+    <label>Paket</label><select id="ec-plan">
+      <option value="basic" ${company.plan==='basic'?'selected':''}>Basic</option>
+      <option value="enterprise" ${company.plan==='enterprise'?'selected':''}>Enterprise</option>
+    </select>
+    <label>Status Lisensi</label><select id="ec-status">
+      ${Object.entries(LICENSE_LABEL).map(([v,l]) => `<option value="${v}" ${company.license_status===v?'selected':''}>${l}</option>`).join('')}
+    </select>
+    <label>Tanggal Mulai</label><input id="ec-start" type="date" value="${company.start_date||''}" />
+    <label>Tanggal Berakhir</label><input id="ec-end" type="date" value="${company.end_date||''}" />
+    <div class="field-err" id="ec-err"></div>
+    <div class="modal-actions">
+      <button class="pill-btn" id="ec-cancel">Batal</button>
+      <button class="btn-main" id="ec-submit" style="margin-top:0;">Simpan Perubahan</button>
+    </div>
+  `);
+  el.querySelector('#ec-cancel').onclick = closeModal;
+  el.querySelector('#ec-submit').onclick = () => saveCompanyEdit(company.id, {
+    name: el.querySelector('#ec-name').value.trim(),
+    plan: el.querySelector('#ec-plan').value,
+    license_status: el.querySelector('#ec-status').value,
+    start_date: el.querySelector('#ec-start').value || null,
+    end_date: el.querySelector('#ec-end').value || null
+  }, el);
+}
+function openCompanyDetailModal(company){
+  const stats = companyEmployeeStats[company.id] || { count:0, adminName:'—' };
+  const el = openModal(`
+    <h4>${company.name}</h4>
+    <p class="lead" style="margin:2px 0 0;">Detail perusahaan & lisensi.</p>
+    <dl class="detail-grid">
+      <dt>Admin</dt><dd>${stats.adminName || '—'}</dd>
+      <dt>Paket</dt><dd>${company.plan === 'enterprise' ? 'Enterprise' : 'Basic'}</dd>
+      <dt>Status Lisensi</dt><dd><span class="tag ${company.license_status}">${LICENSE_LABEL[company.license_status]}</span></dd>
+      <dt>Tanggal Mulai</dt><dd>${company.start_date || '—'}</dd>
+      <dt>Tanggal Berakhir</dt><dd>${company.end_date || '—'}</dd>
+      <dt>Jumlah Karyawan</dt><dd>${stats.count}</dd>
+      <dt>Dibuat</dt><dd>${fmtDateTime(company.created_at)}</dd>
+    </dl>
+    <div class="action-links">
+      <a id="cd-invoices">Lihat tagihan →</a>
+    </div>
+    <div class="modal-actions">
+      <button class="pill-btn" id="cd-close" style="flex:1;">Tutup</button>
+    </div>
+  `);
+  el.querySelector('#cd-close').onclick = closeModal;
+  el.querySelector('#cd-invoices').onclick = () => { closeModal(); setState({ tab:'invoices' }); loadInvoicesForCompany(company.id); };
+}
+function confirmSuspend(company){
+  openConfirmModal({
+    title:'Suspend Perusahaan?',
+    body:`"${company.name}" akan langsung kehilangan akses ke aplikasi sampai diaktifkan lagi. Data tidak dihapus.`,
+    confirmLabel:'Ya, Suspend', danger:true,
+    onConfirm: () => setCompanyStatus(company.id, 'suspended', `Perusahaan "${company.name}" disuspend.`)
+  });
+}
+function confirmArchive(company){
+  openConfirmModal({
+    title:'Arsipkan Perusahaan?',
+    body:`"${company.name}" akan dipindah ke arsip dan tidak muncul sebagai tenant aktif. Ini BUKAN hapus permanen — data tetap tersimpan dan bisa dipulihkan kapan saja.`,
+    confirmLabel:'Ya, Arsipkan', danger:true,
+    onConfirm: () => setCompanyStatus(company.id, 'archived', `Perusahaan "${company.name}" diarsipkan.`)
+  });
+}
+function confirmActivate(company){
+  openConfirmModal({
+    title:'Aktifkan Perusahaan?',
+    body:`"${company.name}" akan langsung bisa dipakai lagi oleh semua karyawannya.`,
+    confirmLabel:'Ya, Aktifkan', danger:false,
+    onConfirm: () => setCompanyStatus(company.id, 'active', `Perusahaan "${company.name}" diaktifkan.`)
+  });
+}
+
+// ---------------- ADMIN: API KEY & WEBHOOK ----------------
+function randomApiKey(){
+  return 'hal_' + Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function updateFeatures(features){
+  setState({ busy:true, err:null });
+  const { data, error } = await sb.from('companies').update({ features }).eq('id', state.employee.company_id).select().single();
+  if(error){ setState({ busy:false, err:'Gagal menyimpan fitur: ' + error.message }); return; }
+  setState({ busy:false, company:data, msg:'Pengaturan fitur disimpan.' });
+}
+async function updateApiWebhookSettings(apiKey, webhookUrl){
+  setState({ busy:true, err:null });
+  const { data, error } = await sb.from('companies').update({ api_key: apiKey, webhook_url: webhookUrl }).eq('id', state.employee.company_id).select().single();
+  if(error){ setState({ busy:false, err:'Gagal menyimpan: ' + error.message }); return; }
+  setState({ busy:false, company:data, msg:'Pengaturan API & webhook disimpan.' });
+}
+
+// ---------------- ADMIN: PAYROLL EXPORT (.xlsx & .pdf) ----------------
+async function fetchPayrollData(monthStr){ // monthStr = 'YYYY-MM'
+  const start = monthStr + '-01T00:00:00';
+  const end = new Date(new Date(start).getFullYear(), new Date(start).getMonth()+1, 1).toISOString();
+  const { data } = await sb.from('attendance').select('*, employees(name,nip)')
+    .eq('company_id', state.employee.company_id).gte('clock_in', start).lt('clock_in', end);
+  const byEmployee = {};
+  (data||[]).forEach(a => {
+    const key = a.employees?.name || 'Tidak diketahui';
+    if(!byEmployee[key]) byEmployee[key] = { nip:a.employees?.nip||'', hadir:0, terlambat:0, totalLateMinutes:0, totalPenalty:0 };
+    byEmployee[key].hadir += 1;
+    if(a.status === 'terlambat') byEmployee[key].terlambat += 1;
+    byEmployee[key].totalLateMinutes += a.late_minutes || 0;
+    byEmployee[key].totalPenalty += Number(a.penalty_amount || 0);
+  });
+  return Object.entries(byEmployee).map(([name, v]) => ({ name, ...v }));
+}
+async function exportPayrollXlsx(monthStr){
+  const rows = await fetchPayrollData(monthStr);
+  const ws = XLSX.utils.json_to_sheet(rows.map(r => ({
+    'Nama': r.name, 'NIP': r.nip, 'Total Hadir': r.hadir, 'Total Terlambat': r.terlambat,
+    'Total Menit Telat': r.totalLateMinutes, 'Total Potongan (Rp)': r.totalPenalty
+  })));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Payroll');
+  XLSX.writeFile(wb, `payroll-${monthStr}.xlsx`);
+}
+async function exportPayrollPdf(monthStr){
+  const rows = await fetchPayrollData(monthStr);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(14); doc.text(`Rekap Payroll — ${monthStr}`, 14, 16);
+  doc.autoTable({
+    startY: 22,
+    head: [['Nama','NIP','Hadir','Terlambat','Menit Telat','Potongan (Rp)']],
+    body: rows.map(r => [r.name, r.nip, r.hadir, r.terlambat, r.totalLateMinutes, Number(r.totalPenalty).toLocaleString('id-ID')])
+  });
+  doc.save(`payroll-${monthStr}.pdf`);
+}
+
+// ---------------- RENDER ----------------
+function render(){
+  root.innerHTML = '';
+  const topbar = document.createElement('div');
+  topbar.className = 'topbar';
+  topbar.innerHTML = `
+    <div class="brand">
+      <div class="brand-mark">A</div>
+      <div><div class="brand-name">Absensi</div><div class="brand-sub">${state.platformAdmin ? 'Super Admin Platform' : (state.company?.name || 'Halina Attendance')}</div></div>
+    </div>
+    ${state.session ? `<button class="pill-btn" id="logout-btn">Keluar</button>` : ''}
+  `;
+  root.appendChild(topbar);
+  if(state.session) topbar.querySelector('#logout-btn').onclick = doLogout;
+
+  if(state.view === 'loading'){ root.appendChild(centerPanel(`<div class="empty">Memuat…</div>`)); return; }
+  if(state.view === 'login'){ root.appendChild(loginView()); return; }
+  if(state.view === 'register'){ root.appendChild(registerView()); return; }
+  if(state.view === 'setup'){ root.appendChild(setupView()); return; }
+  if(state.view === 'platform-setup'){ root.appendChild(platformSetupView()); return; }
+  if(state.view === 'dashboard'){ root.appendChild(dashboardShell()); return; }
+  if(state.view === 'platform-dashboard'){ root.appendChild(platformShell()); return; }
+}
+function centerPanel(inner){ const wrap=document.createElement('div'); wrap.className='center-screen'; wrap.innerHTML=`<div class="panel">${inner}</div>`; return wrap; }
+
+function loginView(){
+  const inner = `
+    <h2>Masuk</h2><p class="lead">Absen masuk/keluar dan kelola tim lo dalam satu tempat.</p>
+    <label>Email</label><input id="li-email" type="email" placeholder="nama@perusahaan.com" />
+    <label>Kata sandi</label><input id="li-pass" type="password" placeholder="••••••••" />
+    <button class="btn-main" id="li-submit" ${state.busy?'disabled':''}>${state.busy?'Memproses…':'Masuk'}</button>
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+    ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
+    <a class="switch-link" id="go-register">Karyawan baru? Daftar akun</a>
+    <a class="switch-link" id="go-setup">Perusahaan baru? Setup di sini</a>
+    <a class="switch-link" id="go-platform-setup">Super Admin Platform? Setup di sini</a>
+  `;
+  const el = centerPanel(inner);
+  el.querySelector('#li-submit').onclick = () => doLogin(el.querySelector('#li-email').value.trim(), el.querySelector('#li-pass').value);
+  el.querySelector('#go-register').onclick = () => setState({ view:'register', err:null, msg:null });
+  el.querySelector('#go-setup').onclick = () => setState({ view:'setup', err:null, msg:null });
+  el.querySelector('#go-platform-setup').onclick = () => setState({ view:'platform-setup', err:null, msg:null });
+  return el;
+}
+function registerView(){
+  const inner = `
+    <h2>Daftar Akun Karyawan</h2><p class="lead">Pakai email yang sama dengan yang sudah didaftarkan admin perusahaan lo.</p>
+    <label>Email</label><input id="rg-email" type="email" placeholder="nama@perusahaan.com" />
+    <label>Buat kata sandi</label><input id="rg-pass" type="password" placeholder="Minimal 6 karakter" />
+    <button class="btn-main" id="rg-submit" ${state.busy?'disabled':''}>${state.busy?'Memproses…':'Daftar'}</button>
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+    <a class="switch-link" id="go-login">Sudah punya akun? Masuk</a>
+  `;
+  const el = centerPanel(inner);
+  el.querySelector('#rg-submit').onclick = () => doRegisterEmployee(el.querySelector('#rg-email').value.trim(), el.querySelector('#rg-pass').value);
+  el.querySelector('#go-login').onclick = () => setState({ view:'login', err:null, msg:null });
+  return el;
+}
+function setupView(){
+  const inner = `
+    <h2>Setup Perusahaan</h2><p class="lead">Dipakai sekali di awal. Ini membuat perusahaan dan akun admin pertama.</p>
+    <label>Nama perusahaan</label><input id="su-company" placeholder="PT Contoh Sejahtera" />
+    <label>Nama lengkap admin</label><input id="su-name" placeholder="Nama lo" />
+    <label>Email admin</label><input id="su-email" type="email" placeholder="admin@perusahaan.com" />
+    <label>Buat kata sandi admin</label><input id="su-pass" type="password" placeholder="Minimal 6 karakter" />
+    <button class="btn-main" id="su-submit" ${state.busy?'disabled':''}>${state.busy?'Menyiapkan…':'Buat Perusahaan & Akun Admin'}</button>
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+    <a class="switch-link" id="go-login">Sudah punya akun? Masuk</a>
+  `;
+  const el = centerPanel(inner);
+  el.querySelector('#su-submit').onclick = () => doSetupCompany({
+    companyName: el.querySelector('#su-company').value.trim(), adminName: el.querySelector('#su-name').value.trim(),
+    email: el.querySelector('#su-email').value.trim(), password: el.querySelector('#su-pass').value
+  });
+  el.querySelector('#go-login').onclick = () => setState({ view:'login', err:null, msg:null });
+  return el;
+}
+function platformSetupView(){
+  const inner = `
+    <h2>Setup Super Admin Platform</h2><p class="lead">Dipakai sekali oleh pemilik SaaS (Anthropic bukan pemiliknya — ini akun lo sebagai penyedia platform absensi). Akun ini terpisah dari akun perusahaan mana pun.</p>
+    <label>Nama lengkap</label><input id="pa-name" placeholder="Nama lo" />
+    <label>Email</label><input id="pa-email" type="email" placeholder="owner@platform.com" />
+    <label>Buat kata sandi</label><input id="pa-pass" type="password" placeholder="Minimal 6 karakter" />
+    <button class="btn-main" id="pa-submit" ${state.busy?'disabled':''}>${state.busy?'Menyiapkan…':'Buat Akun Super Admin'}</button>
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+    <a class="switch-link" id="go-login">Sudah punya akun? Masuk</a>
+  `;
+  const el = centerPanel(inner);
+  el.querySelector('#pa-submit').onclick = () => doSetupPlatformAdmin({
+    name: el.querySelector('#pa-name').value.trim(), email: el.querySelector('#pa-email').value.trim(), password: el.querySelector('#pa-pass').value
+  });
+  el.querySelector('#go-login').onclick = () => setState({ view:'login', err:null, msg:null });
+  return el;
+}
+function getFeatures(){
+  return Object.assign({
+    face_verification:true, geofence:true, field_visit:false, live_tracking:false,
+    shift_swap:true, overtime:true, payroll:true, api_webhook:true, multi_branch:true
+  }, state.company?.features || {});
+}
+function navItemsFor(role){
+  const f = getFeatures();
+  if(role === 'admin') return [
+    {key:'dashboard',label:'Dashboard'}, {key:'clock',label:'Absen Saya'}, {key:'employees',label:'Karyawan'},
+    {key:'org',label:'Organisasi'}, {key:'locations',label:'Lokasi & Shift'}, {key:'approvals',label:'Approval'},
+    {key:'recap',label:'Rekap Absensi'}, {key:'reports',label:'Laporan'}, {key:'settings',label:'Pengaturan Penalti'},
+    ...(f.payroll ? [{key:'payroll',label:'Export Payroll'}] : []),
+    ...(f.live_tracking ? [{key:'tracking',label:'Live Tracking'}] : []),
+    {key:'devices',label:'Device'}, {key:'audit',label:'Audit Trail'}, {key:'backup',label:'Backup'},
+    ...(f.api_webhook ? [{key:'api',label:'API & Webhook'}] : []),
+    {key:'branding',label:'Branding & Page Builder'},
+    {key:'pagebuilder',label:'Page Builder'},
+    {key:'announcements',label:'Pengumuman'},
+    {key:'features',label:'Fitur'}
+  ];
+  if(role === 'supervisor') return [
+    {key:'clock',label:'Absen Saya'}, {key:'approvals',label:'Approval Tim'}, {key:'leave',label:'Pengajuan Saya'}
+  ];
+  return [
+    {key:'clock',label:'Absen'},
+    ...(f.field_visit ? [{key:'fieldvisit',label:'Kunjungan Lapangan'}] : []),
+    {key:'leave',label:'Pengajuan'}, {key:'history',label:'Riwayat'}
+  ];
+}
+
+function dashboardShell(){
+  const role = state.employee.role;
+  const items = navItemsFor(role);
+  const shell = document.createElement('div');
+  shell.className = 'shell';
+  shell.innerHTML = `
+    <div class="nav">${items.map(i => `<a data-key="${i.key}" class="${state.tab===i.key?'active':''}">${i.label}</a>`).join('')}</div>
+    <div class="main" id="main-area"></div>
+  `;
+  shell.querySelectorAll('.nav a').forEach(a => {
+    a.onclick = () => { setState({ tab:a.dataset.key, err:null, msg:null }); };
+  });
+  const main = shell.querySelector('#main-area');
+  renderTab(main, state.tab, role);
+  return shell;
+}
+
+function platformShell(){
+  const items = [ {key:'companies',label:'Perusahaan & Lisensi'}, {key:'invoices',label:'Riwayat Tagihan'} ];
+  const shell = document.createElement('div');
+  shell.className = 'shell';
+  shell.innerHTML = `
+    <div class="nav">${items.map(i => `<a data-key="${i.key}" class="${state.tab===i.key?'active':''}">${i.label}</a>`).join('')}</div>
+    <div class="main" id="main-area"></div>
+  `;
+  shell.querySelectorAll('.nav a').forEach(a => { a.onclick = () => setState({ tab:a.dataset.key, err:null, msg:null }); });
+  const main = shell.querySelector('#main-area');
+  if(state.tab === 'companies') renderPlatformCompanies(main);
+  else renderPlatformInvoices(main);
+  return shell;
+}
+
+function renderPlatformCompanies(main){
+  if(!allCompaniesLoaded){
+    main.innerHTML = `<h3 class="section-title">Perusahaan & Lisensi</h3><div class="kpi-grid">${Array(6).fill(0).map(skeletonCard).join('')}</div>`;
+    loadAllCompanies();
+    return;
+  }
+  const total = allCompanies.length;
+  const byStatus = s => allCompanies.filter(c => c.license_status === s).length;
+  const kpis = [
+    {label:'Total Companies', value: total},
+    {label:'Active', value: byStatus('active')},
+    {label:'Trial', value: byStatus('trial')},
+    {label:'Expired', value: byStatus('expired')},
+    {label:'Suspended', value: byStatus('suspended')},
+    {label:'Archived', value: byStatus('archived')}
+  ];
+  const list = filteredCompanies();
+  main.innerHTML = `
+    <h3 class="section-title">Perusahaan & Lisensi</h3>
+    <p class="section-sub">Kelola tenant, status lisensi, & paket langganan di seluruh platform.</p>
+    <div class="kpi-grid">${kpis.map(k => `<div class="kpi-card"><div class="kpi-num">${k.value}</div><div class="kpi-label">${k.label}</div></div>`).join('')}</div>
+    <div class="toolbar">
+      <input class="grow" id="c-search" placeholder="Cari nama perusahaan atau admin…" value="${companyFilter.q}" />
+      <select id="c-filter-status">
+        <option value="all" ${companyFilter.status==='all'?'selected':''}>Semua Status</option>
+        ${Object.entries(LICENSE_LABEL).map(([v,l]) => `<option value="${v}" ${companyFilter.status===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <select id="c-filter-plan">
+        <option value="all" ${companyFilter.plan==='all'?'selected':''}>Semua Paket</option>
+        <option value="basic" ${companyFilter.plan==='basic'?'selected':''}>Basic</option>
+        <option value="enterprise" ${companyFilter.plan==='enterprise'?'selected':''}>Enterprise</option>
+      </select>
+      <div class="toolbar-right">
+        <button class="pill-btn small" id="c-refresh">↻ Refresh</button>
+        <button class="pill-btn small" id="c-add">+ Tambah Perusahaan</button>
+      </div>
+    </div>
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
+    <table><thead><tr>
+      <th>Nama Perusahaan</th><th>Admin</th><th>Paket</th><th>Status Lisensi</th>
+      <th>Mulai</th><th>Berakhir</th><th>Karyawan</th><th>Billing</th><th>Aksi</th>
+    </tr></thead>
+    <tbody id="c-rows"></tbody></table>
+  `;
+  main.querySelector('#c-search').oninput = (e) => { companyFilter.q = e.target.value; renderPlatformCompanies(main); };
+  main.querySelector('#c-filter-status').onchange = (e) => { companyFilter.status = e.target.value; renderPlatformCompanies(main); };
+  main.querySelector('#c-filter-plan').onchange = (e) => { companyFilter.plan = e.target.value; renderPlatformCompanies(main); };
+  main.querySelector('#c-refresh').onclick = () => { allCompaniesLoaded = false; setState({ msg:null }); };
+  main.querySelector('#c-add').onclick = openAddCompanyModal;
+
+  const rows = main.querySelector('#c-rows');
+  if(list.length === 0){ rows.innerHTML = `<tr><td colspan="9" class="empty">Tidak ada perusahaan yang cocok dengan pencarian/filter.</td></tr>`; return; }
+  rows.innerHTML = list.map(c => {
+    const stats = companyEmployeeStats[c.id] || { count:0, adminName:null };
+    return `
+    <tr data-id="${c.id}">
+      <td>${c.name}</td>
+      <td>${stats.adminName || '<span class="empty" style="padding:0;">Belum daftar</span>'}</td>
+      <td>${c.plan === 'enterprise' ? 'Enterprise' : 'Basic'}</td>
+      <td><span class="tag ${c.license_status}">${LICENSE_LABEL[c.license_status]}</span></td>
+      <td>${c.start_date || '—'}</td>
+      <td>${c.end_date || '—'}</td>
+      <td>${stats.count}</td>
+      <td><a class="switch-link c-view-invoice" style="margin:0;">Lihat tagihan</a></td>
+      <td><div class="action-links">
+        <a class="c-detail">Detail</a>
+        <a class="c-edit">Edit</a>
+        ${c.license_status === 'archived' ? '' : (c.license_status === 'suspended' ? '<a class="c-activate">Aktifkan</a>' : '<a class="c-suspend danger">Suspend</a>')}
+        ${c.license_status === 'archived' ? '<a class="c-activate">Pulihkan</a>' : '<a class="c-archive danger">Arsipkan</a>'}
+      </div></td>
+    </tr>`;
+  }).join('');
+  rows.querySelectorAll('tr').forEach(tr => {
+    const c = allCompanies.find(x => x.id === tr.dataset.id);
+    tr.querySelector('.c-view-invoice').onclick = () => { setState({ tab:'invoices' }); loadInvoicesForCompany(c.id); };
+    tr.querySelector('.c-detail').onclick = () => openCompanyDetailModal(c);
+    tr.querySelector('.c-edit').onclick = () => openEditCompanyModal(c);
+    const susp = tr.querySelector('.c-suspend'); if(susp) susp.onclick = () => confirmSuspend(c);
+    const act = tr.querySelector('.c-activate'); if(act) act.onclick = () => confirmActivate(c);
+    const arch = tr.querySelector('.c-archive'); if(arch) arch.onclick = () => confirmArchive(c);
+  });
+}
+
+function renderPlatformInvoices(main){
+  main.innerHTML = `
+    <h3 class="section-title">Riwayat Tagihan</h3>
+    <div class="toolbar">
+      <select id="inv-company">${allCompanies.map(c => `<option value="${c.id}" ${invoiceCompanyId===c.id?'selected':''}>${c.name}</option>`).join('')}</select>
+    </div>
+    <div class="card-box" style="max-width:460px;">
+      <h4>Tambah Tagihan</h4>
+      <label>Periode (contoh: 2026-09)</label><input id="inv-period" placeholder="2026-09" />
+      <label>Jumlah (Rp)</label><input id="inv-amount" placeholder="500000" />
+      <label>Status</label>
+      <select id="inv-status"><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="overdue">Overdue</option></select>
+      <button class="btn-main" id="inv-add" ${state.busy?'disabled':''}>Tambah Tagihan</button>
+      ${state.err ? `<div class="err">${state.err}</div>` : ''}
+    </div>
+    <table><thead><tr><th>Periode</th><th>Jumlah</th><th>Status</th></tr></thead><tbody id="inv-rows"></tbody></table>
+  `;
+  main.querySelector('#inv-company').onchange = (e) => loadInvoicesForCompany(e.target.value);
+  main.querySelector('#inv-add').onclick = () => {
+    const cid = main.querySelector('#inv-company').value;
+    addInvoice(cid, main.querySelector('#inv-period').value.trim(), parseFloat(main.querySelector('#inv-amount').value || '0'), main.querySelector('#inv-status').value);
+  };
+  const rows = main.querySelector('#inv-rows');
+  if(!companyInvoicesLoaded){ rows.innerHTML = `<tr><td colspan="3"><div class="skeleton" style="height:16px;"></div></td></tr>`; }
+  else if(companyInvoices.length === 0){ rows.innerHTML = `<tr><td colspan="3" class="empty">Belum ada tagihan.</td></tr>`; }
+  else {
+    rows.innerHTML = companyInvoices.map(i => `<tr><td>${i.period}</td><td>Rp${Number(i.amount).toLocaleString('id-ID')}</td><td><span class="tag ${i.status==='paid'?'approved':(i.status==='overdue'?'rejected':'pending_hr')}">${i.status}</span></td></tr>`).join('');
+  }
+  if(!allCompaniesLoaded) loadAllCompanies();
+  else if(!companyInvoicesLoaded && invoiceCompanyId === null && allCompanies[0]) loadInvoicesForCompany(allCompanies[0].id);
+}
+
+function renderTab(main, tab, role){
+  if(tab === 'dashboard'){ renderDashboard(main); return; }
+  if(tab === 'clock'){ renderClock(main); return; }
+  if(tab === 'employees'){ renderEmployees(main); return; }
+  if(tab === 'org'){ renderOrg(main); return; }
+  if(tab === 'reports'){ renderReports(main); return; }
+  if(tab === 'devices'){ renderDevices(main); return; }
+  if(tab === 'audit'){ renderAudit(main); return; }
+  if(tab === 'backup'){ renderBackup(main); return; }
+  if(tab === 'features'){ renderFeatures(main); return; }
+  if(tab === 'branding'){ renderBranding(main); return; }
+  if(tab === 'pagebuilder'){ renderPageBuilder(main); return; }
+  if(tab === 'announcements'){ renderAnnouncements(main); return; }
+  if(tab === 'fieldvisit'){ renderFieldVisit(main); return; }
+  if(tab === 'tracking'){ renderTracking(main); return; }
+  if(tab === 'locations'){ renderLocationsShifts(main); return; }
+  if(tab === 'approvals'){ renderApprovals(main, role); return; }
+  if(tab === 'recap'){ renderRecap(main); return; }
+  if(tab === 'settings'){ renderSettings(main); return; }
+  if(tab === 'payroll'){ renderPayroll(main); return; }
+  if(tab === 'api'){ renderApiSettings(main); return; }
+  if(tab === 'leave'){ renderLeave(main); return; }
+  if(tab === 'history'){ renderHistory(main); return; }
+}
+
+function skeletonCard(){ return `<div class="kpi-card"><div class="skeleton" style="height:26px;width:60%;margin-bottom:8px;"></div><div class="skeleton" style="height:12px;width:80%;"></div></div>`; }
+
+function renderDashboard(main){
+  if(!dashboardStats){
+    main.innerHTML = `
+      <h3 class="section-title">Dashboard</h3>
+      <p class="section-sub">Memuat ringkasan hari ini…</p>
+      <div class="kpi-grid">${Array(8).fill(0).map(skeletonCard).join('')}</div>
+    `;
+    loadDashboardStats();
+    return;
+  }
+  const s = dashboardStats;
+  const cards = [
+    { label:'Total Karyawan', value:s.totalEmployees },
+    { label:'Hadir Hari Ini', value:s.present },
+    { label:'Terlambat', value:s.late },
+    { label:'Tidak Hadir', value:s.absent },
+    { label:'Cuti/Izin', value:s.onLeave },
+    { label:'Attendance Rate', value:s.attendanceRate + '%' },
+    { label:'Late Rate', value:s.lateRate + '%' },
+    { label:'Menunggu Approval', value:s.pendingApproval }
+  ];
+  main.innerHTML = `
+    <h3 class="section-title">Dashboard</h3>
+    <p class="section-sub">Ringkasan absensi hari ini, ${new Date().toLocaleDateString('id-ID',{weekday:'long', day:'numeric', month:'long'})}.</p>
+    <div class="kpi-grid">${cards.map(c => `<div class="kpi-card"><div class="kpi-num">${c.value}</div><div class="kpi-label">${c.label}</div></div>`).join('')}</div>
+    <div class="card-box" style="max-width:460px;">
+      <h4>Attendance Rate</h4>
+      <div class="bar-track"><div class="bar-fill" style="width:${s.attendanceRate}%;"></div></div>
+      <div class="meta" style="margin-top:6px;">${s.present} dari ${s.totalEmployees} karyawan sudah absen hari ini.</div>
+    </div>
+    ${s.pendingApproval > 0 ? `<div class="msg-ok" style="max-width:460px;">Ada ${s.pendingApproval} pengajuan menunggu keputusan — cek tab Approval.</div>` : ''}
+  `;
+}
+
+function renderClock(main){
+  const shift = shiftsList.find(s => s.id === state.employee.shift_id);
+  const roleLabel = { admin:'Admin', supervisor:'Supervisor', employee:'Karyawan' }[state.employee.role] || state.employee.role;
+  main.innerHTML = `
+    ${announcementsFeedLoaded && announcementsFeed.length > 0 ? `
+      <div class="card-box" style="max-width:420px; margin:0 auto 14px; text-align:left;">
+        <div style="font-size:11.5px; font-weight:700; color:var(--stamp); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">📣 Pengumuman</div>
+        ${announcementsFeed.map(a => `
+          <div style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--line);">
+            <div style="font-weight:600; font-size:13.5px;">${escapeHtml(a.title)}</div>
+            <div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">${nl2br(escapeHtml(a.content.slice(0,240)))}${a.content.length>240?'…':''}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+    <div class="card-box" style="max-width:420px; margin:0 auto 20px;">
+      <h4 style="margin-bottom:2px;">${state.employee.name}</h4>
+      <div class="meta">${state.employee.nip ? 'NIP ' + state.employee.nip + ' · ' : ''}${roleLabel}</div>
+      <div class="meta">Shift hari ini: ${shift ? `${shift.name} (${shift.start_time.slice(0,5)}–${shift.end_time.slice(0,5)})` : 'Belum diatur'}</div>
+    </div>
+    <div class="punch-wrap">
+      <div class="clock-time">${new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}</div>
+      <div class="clock-date">${new Date().toLocaleDateString('id-ID',{weekday:'long', day:'numeric', month:'long'})}</div>
+      <button class="punch-btn ${openAttendance ? 'out' : ''}" id="punch" ${state.busy?'disabled':''}>
+        ${openAttendance ? 'Absen<br/>Keluar' : 'Absen<br/>Masuk'}
+      </button>
+      ${openAttendance ? `
+        <div class="card-box" style="max-width:340px; text-align:left;">
+          <div>✓ Masuk pukul ${fmtTime(openAttendance.clock_in)}</div>
+          <div>${openAttendance.within_geofence===false ? '✕ Di luar radius kantor' : (openAttendance.within_geofence===true ? '✓ Dalam radius kantor' : '— Lokasi tidak tercatat')}</div>
+          <div>${openAttendance.liveness_passed===true ? '✓ Face verification berhasil' : (openAttendance.liveness_passed===false ? '✕ Face verification gagal/di-skip' : '—')}</div>
+          <div>${openAttendance.late_minutes ? `✕ Telat ${openAttendance.late_minutes} menit${openAttendance.penalty_amount ? ', potongan Rp' + Number(openAttendance.penalty_amount).toLocaleString('id-ID') : ''}` : '✓ Tepat waktu'}</div>
+        </div>` : `<div class="status-row">Absensi hari ini belum dimulai. Wajah, lokasi & shift dicek otomatis saat absen.</div>`}
+      ${state.err ? `<div class="err">${state.err}</div>` : ''}
+    </div>`;
+  main.querySelector('#punch').onclick = () => { openAttendance ? clockOut() : clockIn(); };
+  if(openAttendance === null) loadOpenAttendance();
+  if(!locationsLoaded) loadLocations();
+  if(!shiftsLoaded) loadShifts();
+  if(!announcementsFeedLoaded) loadAnnouncementsFeed();
+}
+
+function renderEmployees(main){
+  main.innerHTML = `
+    <h3 class="section-title">Karyawan</h3>
+    <p class="section-sub">Tambahkan karyawan, lalu atur shift & atasan (supervisor) untuk masing-masing.</p>
+    <div class="toolbar">
+      <input id="e-nip" placeholder="NIP (opsional)" />
+      <input id="e-name" placeholder="Nama lengkap" />
+      <input id="e-email" placeholder="Email" type="email" />
+      <button class="pill-btn" id="e-add" ${state.busy?'disabled':''}>+ Tambah</button>
+    </div>
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+    ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
+    <table><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Shift</th><th>Atasan</th><th>Akun</th></tr></thead>
+    <tbody id="e-rows"></tbody></table>
+  `;
+  main.querySelector('#e-add').onclick = () => {
+    const nip = main.querySelector('#e-nip').value.trim();
+    const name = main.querySelector('#e-name').value.trim();
+    const email = main.querySelector('#e-email').value.trim();
+    if(!name || !email){ setState({ err:'Nama dan email wajib diisi.' }); return; }
+    addEmployee(nip, name, email);
+  };
+  const rows = main.querySelector('#e-rows');
+  if(!employeeListLoaded){ rows.innerHTML = Array(3).fill(0).map(()=>`<tr><td colspan="6"><div class="skeleton" style="height:18px;"></div></td></tr>`).join(''); }
+  else if(employeeList.length === 0){ rows.innerHTML = `<tr><td colspan="6" class="empty">Belum ada karyawan.</td></tr>`; }
+  else {
+    rows.innerHTML = employeeList.map(e => `
+      <tr data-id="${e.id}">
+        <td>${e.name}${e.nip ? `<br><span style="color:var(--ink-soft);font-size:11.5px">${e.nip}</span>` : ''}</td>
+        <td>${e.email}</td>
+        <td><select class="f-role"><option value="employee" ${e.role==='employee'?'selected':''}>Karyawan</option><option value="supervisor" ${e.role==='supervisor'?'selected':''}>Supervisor</option><option value="admin" ${e.role==='admin'?'selected':''}>Admin</option></select></td>
+        <td><select class="f-shift"><option value="">—</option>${shiftsList.map(s=>`<option value="${s.id}" ${e.shift_id===s.id?'selected':''}>${s.name}</option>`).join('')}</select></td>
+        <td><select class="f-sup"><option value="">—</option>${employeeList.filter(x=>x.id!==e.id).map(x=>`<option value="${x.id}" ${e.supervisor_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></td>
+        <td>${e.auth_user_id ? 'Aktif' : 'Belum daftar'}</td>
+      </tr>`).join('');
+    rows.querySelectorAll('tr').forEach(tr => {
+      const id = tr.dataset.id;
+      const save = () => updateEmployeeAssignment(id, tr.querySelector('.f-shift').value, tr.querySelector('.f-sup').value, tr.querySelector('.f-role').value);
+      tr.querySelector('.f-role').onchange = save;
+      tr.querySelector('.f-shift').onchange = save;
+      tr.querySelector('.f-sup').onchange = save;
+    });
+  }
+  if(!employeeListLoaded) loadEmployeeList();
+  if(!shiftsLoaded) loadShifts();
+}
+
+function renderLocationsShifts(main){
+  main.innerHTML = `
+    <h3 class="section-title">Lokasi & Shift</h3>
+    <p class="section-sub">Lokasi dipakai untuk validasi radius geofence saat absen. Shift dipakai untuk menentukan status "terlambat".</p>
+    <div class="two-col">
+      <div class="card-box">
+        <h4>Tambah Lokasi Kantor</h4>
+        <label>Nama lokasi</label><input id="loc-name" placeholder="Kantor Pusat" />
+        <label>Tipe</label>
+        <select id="loc-type"><option value="office">Kantor Tetap</option><option value="project_site">Project Site (Sementara)</option></select>
+        <div class="two-col">
+          <div><label>Latitude</label><input id="loc-lat" placeholder="-6.200000" /></div>
+          <div><label>Longitude</label><input id="loc-lng" placeholder="106.816666" /></div>
+        </div>
+        <label>Radius (meter)</label><input id="loc-radius" value="150" />
+        <button class="pill-btn small" id="loc-use-my" style="margin-top:10px;">Pakai lokasi saya sekarang</button>
+        <button class="btn-main" id="loc-add" ${state.busy?'disabled':''}>Simpan Lokasi</button>
+        ${locationsList.map(l => `<div class="meta" style="margin-top:10px;">• ${l.name}${l.type==='project_site'?' (Project Site)':''} — radius ${l.radius_meters}m</div>`).join('')}
+      </div>
+      <div class="card-box">
+        <h4>Tambah Shift</h4>
+        <label>Nama shift</label><input id="shift-name" placeholder="Shift Pagi" />
+        <div class="two-col">
+          <div><label>Jam masuk</label><input id="shift-start" type="time" value="08:00" /></div>
+          <div><label>Jam pulang</label><input id="shift-end" type="time" value="17:00" /></div>
+        </div>
+        <button class="btn-main" id="shift-add" ${state.busy?'disabled':''}>Simpan Shift</button>
+        ${shiftsList.map(s => `<div class="meta" style="margin-top:10px;">• ${s.name} — ${s.start_time.slice(0,5)} s/d ${s.end_time.slice(0,5)}</div>`).join('')}
+      </div>
+    </div>
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+  `;
+  main.querySelector('#loc-use-my').onclick = async () => {
+    const loc = await getLocation();
+    if(loc){ main.querySelector('#loc-lat').value = loc.lat.toFixed(6); main.querySelector('#loc-lng').value = loc.lng.toFixed(6); }
+  };
+  main.querySelector('#loc-add').onclick = () => {
+    const name = main.querySelector('#loc-name').value.trim();
+    const lat = parseFloat(main.querySelector('#loc-lat').value);
+    const lng = parseFloat(main.querySelector('#loc-lng').value);
+    const radius = parseInt(main.querySelector('#loc-radius').value || '150');
+    const type = main.querySelector('#loc-type').value;
+    if(!name || isNaN(lat) || isNaN(lng)){ setState({ err:'Nama, latitude, dan longitude wajib diisi.' }); return; }
+    addLocation(name, lat, lng, radius, type);
+  };
+  main.querySelector('#shift-add').onclick = () => {
+    const name = main.querySelector('#shift-name').value.trim();
+    const start = main.querySelector('#shift-start').value;
+    const end = main.querySelector('#shift-end').value;
+    if(!name){ setState({ err:'Nama shift wajib diisi.' }); return; }
+    addShift(name, start, end);
+  };
+  if(!locationsLoaded) loadLocations();
+  if(!shiftsLoaded) loadShifts();
+}
+
+function renderApprovals(main, role){
+  main.innerHTML = `
+    <h3 class="section-title">${role==='admin' ? 'Approval (HR — Keputusan Akhir)' : 'Approval Tim'}</h3>
+    <p class="section-sub">${role==='admin' ? 'Pengajuan yang sudah disetujui supervisor menunggu keputusan akhir HR.' : 'Pengajuan dari karyawan yang lo supervisi.'}</p>
+    ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
+    <div id="ap-list"></div>
+  `;
+  const list = main.querySelector('#ap-list');
+  if(!pendingApprovalsLoaded){ list.innerHTML = Array(2).fill(0).map(()=>`<div class="skeleton" style="height:90px;margin-bottom:14px;"></div>`).join(''); }
+  else if(pendingApprovals.length === 0){ list.innerHTML = `<div class="empty">Tidak ada pengajuan menunggu keputusan.</div>`; }
+  else {
+    list.innerHTML = pendingApprovals.map(r => `
+      <div class="card-box" data-id="${r.id}">
+        <h4>${TYPE_LABEL[r.type]} — ${r.employees?.name || ''}</h4>
+        <div class="meta">${fmtDate(r.start_date)} s/d ${fmtDate(r.end_date)} · <span class="tag ${r.status}">${STATUS_LABEL[r.status]}</span></div>
+        <div>${r.reason || '<span class="empty">Tanpa keterangan.</span>'}</div>
+        <input class="ap-note" placeholder="Catatan (opsional)" style="margin-top:10px;" />
+        <div class="row-actions">
+          <button class="pill-btn good ap-approve">Setujui</button>
+          <button class="pill-btn bad ap-reject">Tolak</button>
+        </div>
+      </div>`).join('');
+    list.querySelectorAll('.card-box').forEach(box => {
+      const id = box.dataset.id;
+      const note = () => box.querySelector('.ap-note').value.trim();
+      box.querySelector('.ap-approve').onclick = () => role==='admin' ? decideAsHR(id, true, note()) : decideAsSupervisor(id, true, note());
+      box.querySelector('.ap-reject').onclick = () => role==='admin' ? decideAsHR(id, false, note()) : decideAsSupervisor(id, false, note());
+    });
+  }
+  if(!pendingApprovalsLoaded) loadPendingApprovals();
+}
+
+function renderRecap(main){
+  main.innerHTML = `
+    <h3 class="section-title">Rekap Absensi</h3>
+    <p class="section-sub">100 catatan absensi terbaru di perusahaan lo.</p>
+    <table><thead><tr><th>Nama</th><th>Masuk</th><th>Keluar</th><th>Status</th><th>Geofence</th><th>Liveness</th><th>Telat</th><th>Potongan</th></tr></thead>
+    <tbody id="r-rows"></tbody></table>
+  `;
+  const rows = main.querySelector('#r-rows');
+  if(!recapListLoaded){ rows.innerHTML = Array(4).fill(0).map(()=>`<tr><td colspan="8"><div class="skeleton" style="height:18px;"></div></td></tr>`).join(''); }
+  else if(recapList.length === 0){ rows.innerHTML = `<tr><td colspan="8" class="empty">Belum ada data absensi.</td></tr>`; }
+  else {
+    rows.innerHTML = recapList.map(a => `
+      <tr>
+        <td>${a.employees?.name || '—'}</td>
+        <td>${fmtDateTime(a.clock_in)}</td>
+        <td>${a.clock_out ? fmtDateTime(a.clock_out) : '—'}</td>
+        <td><span class="tag ${a.status}">${a.status}</span></td>
+        <td>${a.within_geofence===null || a.within_geofence===undefined ? '—' : `<span class="tag ${a.within_geofence?'geo-ok':'geo-bad'}">${a.within_geofence? 'Dalam radius':'Luar radius'}</span>`}</td>
+        <td>${a.liveness_passed===null || a.liveness_passed===undefined ? '—' : `<span class="tag ${a.liveness_passed?'geo-ok':'geo-bad'}">${a.liveness_passed? 'Terverifikasi':'Gagal'}</span>`}${a.selfie_url ? ` <a href="${a.selfie_url}" target="_blank" style="font-size:11px;">lihat foto</a>` : ''}</td>
+        <td>${a.late_minutes ? a.late_minutes + ' mnt' : '—'}</td>
+        <td>${a.penalty_amount ? 'Rp' + Number(a.penalty_amount).toLocaleString('id-ID') : '—'}</td>
+      </tr>`).join('');
+  }
+  if(!recapListLoaded) loadRecap();
+}
+
+function renderSettings(main){
+  const tol = state.company?.late_tolerance_minutes ?? 15;
+  const rate = state.company?.penalty_per_minute ?? 0;
+  main.innerHTML = `
+    <h3 class="section-title">Pengaturan Penalti Keterlambatan</h3>
+    <p class="section-sub">Dihitung otomatis berdasarkan jam mulai shift tiap karyawan. Toleransi tidak kena potongan; setelah itu, tiap menit kena tarif di bawah.</p>
+    <div class="card-box" style="max-width:400px;">
+      <label>Toleransi keterlambatan (menit)</label><input id="st-tol" value="${tol}" />
+      <label>Potongan per menit setelah toleransi (Rp)</label><input id="st-rate" value="${rate}" />
+      <button class="btn-main" id="st-save" ${state.busy?'disabled':''}>Simpan</button>
+      ${state.err ? `<div class="err">${state.err}</div>` : ''}
+      ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
+    </div>
+  `;
+  main.querySelector('#st-save').onclick = () => {
+    const tolerance = parseInt(main.querySelector('#st-tol').value || '0');
+    const r = parseFloat(main.querySelector('#st-rate').value || '0');
+    updatePenaltySettings(tolerance, r);
+  };
+}
+
+function renderPayroll(main){
+  const thisMonth = new Date().toISOString().slice(0,7);
+  main.innerHTML = `
+    <h3 class="section-title">Export Payroll</h3>
+    <p class="section-sub">Rekap hadir, terlambat, dan potongan otomatis per bulan, siap dipakai untuk proses payroll.</p>
+    <div class="card-box" style="max-width:400px;">
+      <label>Pilih bulan</label><input id="pr-month" type="month" value="${thisMonth}" />
+      <div class="row-actions" style="margin-top:14px;">
+        <button class="pill-btn" id="pr-xlsx">Download .XLSX</button>
+        <button class="pill-btn" id="pr-pdf">Download .PDF</button>
+      </div>
+    </div>
+  `;
+  main.querySelector('#pr-xlsx').onclick = () => exportPayrollXlsx(main.querySelector('#pr-month').value);
+  main.querySelector('#pr-pdf').onclick = () => exportPayrollPdf(main.querySelector('#pr-month').value);
+}
+
+function renderApiSettings(main){
+  const key = state.company?.api_key || '';
+  const wh = state.company?.webhook_url || '';
+  main.innerHTML = `
+    <h3 class="section-title">API & Webhook</h3>
+    <p class="section-sub">Setiap absen masuk/keluar akan dikirim otomatis (POST) ke webhook URL lo lewat pg_net di database — tanpa perlu server tambahan.</p>
+    <div class="card-box" style="max-width:460px;">
+      <label>API Key</label>
+      <div class="toolbar"><input id="api-key" value="${key}" readonly /><button class="pill-btn small" id="api-gen">Generate Baru</button></div>
+      <label>Webhook URL</label><input id="api-wh" value="${wh}" placeholder="https://contoh.com/webhook/absensi" />
+      <button class="btn-main" id="api-save" ${state.busy?'disabled':''}>Simpan</button>
+      ${state.err ? `<div class="err">${state.err}</div>` : ''}
+      ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
+    </div>
+  `;
+  main.querySelector('#api-gen').onclick = () => { main.querySelector('#api-key').value = randomApiKey(); };
+  main.querySelector('#api-save').onclick = () => updateApiWebhookSettings(main.querySelector('#api-key').value.trim(), main.querySelector('#api-wh').value.trim());
+}
+
+function renderOrg(main){
+  main.innerHTML = `
+    <h3 class="section-title">Struktur Organisasi</h3>
+    <p class="section-sub">Company → Cabang → Divisi → Departemen → Jabatan → Karyawan. Assign ke karyawan lewat tab Karyawan setelah dibuat di sini.</p>
+    <div class="two-col">
+      ${getFeatures().multi_branch ? `
+      <div class="card-box"><h4>Cabang</h4>
+        <div class="toolbar"><input id="org-branch-name" placeholder="Nama cabang" /><button class="pill-btn small" id="org-branch-add">+ Tambah</button></div>
+        ${!orgLoaded ? `<div class="skeleton" style="height:16px;"></div>` : (branchesList.length===0 ? `<div class="empty">Belum ada.</div>` : branchesList.map(b=>`<div class="meta">• ${b.name}</div>`).join(''))}
+      </div>` : ''}
+      <div class="card-box"><h4>Divisi</h4>
+        <div class="toolbar"><input id="org-division-name" placeholder="Nama divisi" /><button class="pill-btn small" id="org-division-add">+ Tambah</button></div>
+        ${!orgLoaded ? `<div class="skeleton" style="height:16px;"></div>` : (divisionsList.length===0 ? `<div class="empty">Belum ada.</div>` : divisionsList.map(d=>`<div class="meta">• ${d.name}</div>`).join(''))}
+      </div>
+      <div class="card-box"><h4>Departemen</h4>
+        <div class="toolbar"><input id="org-department-name" placeholder="Nama departemen" /><button class="pill-btn small" id="org-department-add">+ Tambah</button></div>
+        ${!orgLoaded ? `<div class="skeleton" style="height:16px;"></div>` : (departmentsList.length===0 ? `<div class="empty">Belum ada.</div>` : departmentsList.map(d=>`<div class="meta">• ${d.name}</div>`).join(''))}
+      </div>
+      <div class="card-box"><h4>Jabatan</h4>
+        <div class="toolbar"><input id="org-position-name" placeholder="Nama jabatan" /><button class="pill-btn small" id="org-position-add">+ Tambah</button></div>
+        ${!orgLoaded ? `<div class="skeleton" style="height:16px;"></div>` : (positionsList.length===0 ? `<div class="empty">Belum ada.</div>` : positionsList.map(p=>`<div class="meta">• ${p.name}</div>`).join(''))}
+      </div>
+    </div>
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+  `;
+  if(main.querySelector('#org-branch-add')) main.querySelector('#org-branch-add').onclick = () => { const v=main.querySelector('#org-branch-name').value.trim(); if(v) addOrgUnit('branches', v); };
+  main.querySelector('#org-division-add').onclick = () => { const v=main.querySelector('#org-division-name').value.trim(); if(v) addOrgUnit('divisions', v); };
+  main.querySelector('#org-department-add').onclick = () => { const v=main.querySelector('#org-department-name').value.trim(); if(v) addOrgUnit('departments', v); };
+  main.querySelector('#org-position-add').onclick = () => { const v=main.querySelector('#org-position-name').value.trim(); if(v) addOrgUnit('positions', v); };
+  if(!orgLoaded) loadOrgData();
+}
+
+function renderReports(main){
+  const today = new Date().toISOString().slice(0,10);
+  const monthAgo = new Date(Date.now() - 30*86400000).toISOString().slice(0,10);
+  main.innerHTML = `
+    <h3 class="section-title">Laporan</h3>
+    <p class="section-sub">Filter rentang tanggal untuk lihat & export laporan absensi mentah.</p>
+    <div class="toolbar">
+      <input id="rp-start" type="date" value="${monthAgo}" />
+      <input id="rp-end" type="date" value="${today}" />
+      <button class="pill-btn" id="rp-run">Tampilkan</button>
+      ${reportRows ? `<button class="pill-btn" id="rp-export">Export Excel</button>` : ''}
+    </div>
+    <div id="rp-result"></div>
+  `;
+  main.querySelector('#rp-run').onclick = () => runReport(main.querySelector('#rp-start').value, main.querySelector('#rp-end').value);
+  if(main.querySelector('#rp-export')) main.querySelector('#rp-export').onclick = exportReportXlsx;
+  const box = main.querySelector('#rp-result');
+  if(!reportRows){ box.innerHTML = `<div class="empty">Pilih rentang tanggal lalu klik Tampilkan.</div>`; }
+  else if(reportRows.length === 0){ box.innerHTML = `<div class="empty">Tidak ada data di rentang ini.</div>`; }
+  else {
+    box.innerHTML = `<table><thead><tr><th>Nama</th><th>Tanggal</th><th>Masuk</th><th>Keluar</th><th>Status</th></tr></thead><tbody>${
+      reportRows.map(a => `<tr><td>${a.employees?.name||'—'}</td><td>${fmtDate(a.clock_in)}</td><td>${fmtTime(a.clock_in)}</td><td>${a.clock_out?fmtTime(a.clock_out):'—'}</td><td><span class="tag ${a.status}">${a.status}</span></td></tr>`).join('')
+    }</tbody></table>`;
+  }
+}
+
+function renderDevices(main){
+  main.innerHTML = `
+    <h3 class="section-title">Device Management</h3>
+    <p class="section-sub">Device diidentifikasi lewat fingerprint browser (bukan ID hardware asli). Reset kalau karyawan ganti HP.</p>
+    <table><thead><tr><th>Karyawan</th><th>OS</th><th>Tipe</th><th>Status</th><th>Terakhir Aktif</th><th></th></tr></thead>
+    <tbody id="dv-rows"></tbody></table>
+  `;
+  const rows = main.querySelector('#dv-rows');
+  if(!devicesLoaded){ rows.innerHTML = Array(2).fill(0).map(()=>`<tr><td colspan="6"><div class="skeleton" style="height:16px;"></div></td></tr>`).join(''); }
+  else if(devicesList.length === 0){ rows.innerHTML = `<tr><td colspan="6" class="empty">Belum ada device terdaftar.</td></tr>`; }
+  else {
+    rows.innerHTML = devicesList.map(d => `
+      <tr data-id="${d.id}">
+        <td>${d.employees?.name||'—'}</td><td>${d.os||'—'}</td><td>${d.device_type||'—'}</td>
+        <td><span class="tag ${d.status==='active'?'geo-ok':(d.status==='blocked'?'geo-bad':'pending_hr')}">${d.status}</span></td>
+        <td>${fmtDateTime(d.last_active)}</td>
+        <td>${d.status!=='replaced' ? `<button class="pill-btn small dv-reset">Reset</button>` : ''}</td>
+      </tr>`).join('');
+    rows.querySelectorAll('.dv-reset').forEach(btn => { btn.onclick = () => resetDevice(btn.closest('tr').dataset.id); });
+  }
+  if(!devicesLoaded) loadDevices();
+}
+
+function renderAudit(main){
+  main.innerHTML = `
+    <h3 class="section-title">Audit Trail</h3>
+    <p class="section-sub">Riwayat perubahan pada data karyawan, lisensi perusahaan, dan keputusan approval. Tidak bisa dihapus lewat aplikasi.</p>
+    <table><thead><tr><th>Waktu</th><th>Aksi</th><th>Modul</th><th>Record</th></tr></thead>
+    <tbody id="au-rows"></tbody></table>
+  `;
+  const rows = main.querySelector('#au-rows');
+  if(!auditLoaded){ rows.innerHTML = Array(3).fill(0).map(()=>`<tr><td colspan="4"><div class="skeleton" style="height:16px;"></div></td></tr>`).join(''); }
+  else if(auditLogList.length === 0){ rows.innerHTML = `<tr><td colspan="4" class="empty">Belum ada aktivitas tercatat.</td></tr>`; }
+  else {
+    rows.innerHTML = auditLogList.map(a => `<tr><td>${fmtDateTime(a.created_at)}</td><td>${a.action}</td><td>${a.module}</td><td style="font-size:11px;">${a.record_id||'—'}</td></tr>`).join('');
+  }
+  if(!auditLoaded) loadAuditLog();
+}
+
+function renderBackup(main){
+  main.innerHTML = `
+    <h3 class="section-title">Backup Center</h3>
+    <p class="section-sub">Export seluruh data karyawan, absensi, dan pengajuan sebagai file JSON yang bisa lo simpan sendiri. Restore manual belum tersedia — hubungi dulu kalau butuh ini.</p>
+    <button class="btn-main" style="max-width:240px;" id="bk-create" ${state.busy?'disabled':''}>${state.busy?'Membuat backup…':'Buat Backup Sekarang'}</button>
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+    ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
+    <h4 style="margin-top:24px;">Riwayat Backup</h4>
+    <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Ukuran</th><th>Status</th></tr></thead><tbody id="bk-rows"></tbody></table>
+  `;
+  main.querySelector('#bk-create').onclick = createBackup;
+  const rows = main.querySelector('#bk-rows');
+  if(!backupsLoaded){ rows.innerHTML = `<tr><td colspan="4"><div class="skeleton" style="height:16px;"></div></td></tr>`; }
+  else if(backupsList.length === 0){ rows.innerHTML = `<tr><td colspan="4" class="empty">Belum pernah backup.</td></tr>`; }
+  else {
+    rows.innerHTML = backupsList.map(b => `<tr><td>${fmtDateTime(b.created_at)}</td><td>${b.type}</td><td>${b.size_bytes ? (b.size_bytes/1024).toFixed(1)+' KB' : '—'}</td><td><span class="tag ${b.status==='completed'?'geo-ok':'geo-bad'}">${b.status}</span></td></tr>`).join('');
+  }
+  if(!backupsLoaded) loadBackups();
+}
+
+const FEATURE_LABEL = {
+  face_verification:'Face Verification (liveness saat absen)', geofence:'Geofence (validasi radius lokasi)',
+  field_visit:'Field Visit & Live Tracking', live_tracking:'Live Tracking Rute Karyawan',
+  shift_swap:'Tukar Shift', overtime:'Lembur', payroll:'Payroll & Export',
+  api_webhook:'API & Webhook', multi_branch:'Multi Cabang'
+};
+function renderBranding(main){
+  if(!brandingLoaded){
+    main.innerHTML = `<h3 class="section-title">Branding & Page Builder</h3><div class="kpi-grid">${Array(3).fill(0).map(skeletonCard).join('')}</div>`;
+    loadBranding();
+    return;
+  }
+  if(!brandingVersionsLoaded) loadBrandingVersions();
+  const d = brandingDraft;
+  main.innerHTML = `
+    <h3 class="section-title">Branding & Page Builder</h3>
+    <p class="section-sub">Identitas & tema perusahaan lo. Perubahan langsung berlaku setelah disimpan, dan setiap simpanan tercatat di riwayat versi.</p>
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
+    <div style="display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start;">
+      <div class="card-box" style="max-width:none;">
+        <h4>Identitas Perusahaan</h4>
+        <label>Short Name</label><input id="br-short" value="${d.short_name || ''}" placeholder="${state.company?.name || 'Nama singkat'}" />
+        <label>Tagline</label><input id="br-tagline" value="${d.tagline || ''}" placeholder="cth: Absensi cepat, akurat, tanpa drama" />
+        <label>Login Title</label><input id="br-login-title" value="${d.login_title || ''}" placeholder="Selamat Datang Kembali" />
+        <label>Login Subtitle</label><input id="br-login-sub" value="${d.login_subtitle || ''}" placeholder="Masuk untuk absen hari ini" />
+        <label>PWA Name</label><input id="br-pwa-name" value="${d.pwa_name || ''}" placeholder="Nama aplikasi saat di-install ke HP" />
+
+        <h4 style="margin-top:22px;">Logo & Favicon</h4>
+        <div style="display:flex; gap:18px; align-items:flex-end; flex-wrap:wrap;">
+          <div>
+            <label>Logo (PNG/JPG/WebP, maks 5MB)</label>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <img id="br-logo-preview" src="${withCacheBust(d.logo_192_url || d.logo_url, d.updated_at) || ''}" onerror="this.style.display='none'" style="width:44px;height:44px;object-fit:contain;border-radius:6px;border:1px solid var(--line);${(d.logo_192_url||d.logo_url)?'':'display:none;'}" />
+              <input type="file" id="br-logo-file" accept="image/png,image/jpeg,image/webp" />
+            </div>
+          </div>
+          <div>
+            <label>Favicon</label>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <img id="br-favicon-preview" src="${withCacheBust(d.favicon_url, d.updated_at) || ''}" onerror="this.style.display='none'" style="width:24px;height:24px;object-fit:contain;border-radius:4px;border:1px solid var(--line);${d.favicon_url?'':'display:none;'}" />
+              <input type="file" id="br-favicon-file" accept="image/png,image/jpeg,image/webp" />
+            </div>
+          </div>
+        </div>
+
+        <h4 style="margin-top:22px;">Tema</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+          <div><label>Warna Primer</label><input type="color" id="br-primary" value="${d.primary_color}" style="height:38px;padding:4px;" /></div>
+          <div><label>Warna Sekunder</label><input type="color" id="br-secondary" value="${d.secondary_color}" style="height:38px;padding:4px;" /></div>
+          <div><label>Warna Latar</label><input type="color" id="br-bg" value="${d.background_color}" style="height:38px;padding:4px;" /></div>
+          <div><label>Warna Teks</label><input type="color" id="br-text" value="${d.text_color}" style="height:38px;padding:4px;" /></div>
+        </div>
+
+        <div class="field-err" id="br-err" style="display:none;"></div>
+        <div class="modal-actions" style="max-width:none;">
+          <button class="pill-btn" id="br-reset">Reset to Default</button>
+          <button class="btn-main" id="br-save" style="margin-top:0; flex:1;">Simpan</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="card-box" style="max-width:none; padding:0; overflow:hidden;">
+          <div id="br-preview" style="padding:22px 18px; background:${d.background_color}; color:${d.text_color}; text-align:center;">
+            ${d.logo_url ? `<img src="${withCacheBust(d.logo_url, d.updated_at)}" onerror="this.style.display='none'" style="width:48px;height:48px;object-fit:contain;margin-bottom:10px;" />` : `<div style="width:48px;height:48px;border-radius:10px;background:${d.primary_color};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;margin:0 auto 10px;">${(d.short_name || state.company?.name || 'A').slice(0,1).toUpperCase()}</div>`}
+            <div style="font-weight:700; font-size:16px;">${d.login_title || 'Selamat Datang'}</div>
+            <div style="font-size:12.5px; opacity:.75; margin-top:2px;">${d.login_subtitle || d.tagline || 'Masuk untuk melanjutkan'}</div>
+            <button style="margin-top:16px; width:100%; border:none; border-radius:8px; padding:10px; background:${d.primary_color}; color:#fff; font-weight:600;">Masuk</button>
+          </div>
+          <div style="padding:10px 18px; font-size:11px; color:var(--ink-soft); border-top:1px solid var(--line);">Preview — Login Page</div>
+        </div>
+
+        <h4 style="margin-top:20px;">Riwayat Versi</h4>
+        <div id="br-versions">
+          ${!brandingVersionsLoaded ? `<div class="skeleton" style="height:60px;"></div>` :
+            brandingVersions.length === 0 ? `<p class="empty" style="padding:10px 0;">Belum ada riwayat.</p>` :
+            brandingVersions.map(v => `
+              <div class="card-box" style="max-width:none; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-vid="${v.id}">
+                <div>
+                  <div style="font-weight:600; font-size:13px;">Versi #${v.version}</div>
+                  <div style="font-size:11.5px; color:var(--ink-soft);">${fmtDateTime(v.changed_at)}</div>
+                </div>
+                <a style="font-size:12px; color:var(--stamp);">Preview</a>
+              </div>
+            `).join('')
+          }
+        </div>
+      </div>
+    </div>
+  `;
+  main.querySelectorAll('#br-versions [data-vid]').forEach(row => {
+    row.onclick = () => openBrandingVersionModal(brandingVersions.find(v => v.id === row.dataset.vid));
+  });
+  main.querySelector('#br-reset').onclick = resetBrandingDraft;
+  main.querySelector('#br-save').onclick = async () => {
+    const errBox = main.querySelector('#br-err'), saveBtn = main.querySelector('#br-save');
+    errBox.style.display = 'none';
+    const logoFile = main.querySelector('#br-logo-file').files[0];
+    const faviconFile = main.querySelector('#br-favicon-file').files[0];
+    const patch = {
+      short_name: main.querySelector('#br-short').value.trim(),
+      tagline: main.querySelector('#br-tagline').value.trim(),
+      login_title: main.querySelector('#br-login-title').value.trim(),
+      login_subtitle: main.querySelector('#br-login-sub').value.trim(),
+      pwa_name: main.querySelector('#br-pwa-name').value.trim(),
+      primary_color: main.querySelector('#br-primary').value,
+      secondary_color: main.querySelector('#br-secondary').value,
+      background_color: main.querySelector('#br-bg').value,
+      text_color: main.querySelector('#br-text').value,
+    };
+    let finalKB = null;
+    if(logoFile){
+      saveBtn.disabled = true; saveBtn.textContent = 'Mengompres logo…';
+      const r = await processAndUploadLogo(logoFile);
+      if(r.error){ errBox.textContent = r.error; errBox.style.display='block'; saveBtn.disabled=false; saveBtn.textContent='Simpan'; return; }
+      patch.logo_url = r.logo_url; patch.logo_512_url = r.logo_512_url; patch.logo_192_url = r.logo_192_url;
+      finalKB = r.finalKB;
+    }
+    if(faviconFile){
+      saveBtn.disabled = true; saveBtn.textContent = 'Mengompres favicon…';
+      const r = await processAndUploadFavicon(faviconFile);
+      if(r.error){ errBox.textContent = r.error; errBox.style.display='block'; saveBtn.disabled=false; saveBtn.textContent='Simpan'; return; }
+      patch.favicon_url = r.favicon_url;
+    }
+    saveBtn.textContent = 'Menyimpan…';
+    await saveBranding(patch, main);
+    if(finalKB !== null && !main.querySelector('#br-err').textContent){
+      setState({ msg: `Branding disimpan. Logo dikompres otomatis ke WebP (±${finalKB}KB, dibuat juga versi 192×192 & 512×512 untuk PWA).` });
+    }
+  };
+}
+function renderPageBuilder(main){
+  main.innerHTML = `
+    <h3 class="section-title">Page Builder</h3>
+    <p class="section-sub">Atur susunan blok di Dashboard karyawan & tampilan halaman Login perusahaan lo — tanpa perlu tulis HTML/CSS sendiri.</p>
+    <div class="toolbar">
+      <button class="pill-btn ${pageBuilderSubTab==='dashboard'?'good':''}" id="pb-tab-dash">Dashboard Blocks</button>
+      <button class="pill-btn ${pageBuilderSubTab==='login'?'good':''}" id="pb-tab-login">Login Page</button>
+    </div>
+    <div id="pb-body"></div>
+  `;
+  main.querySelector('#pb-tab-dash').onclick = () => { pageBuilderSubTab = 'dashboard'; renderPageBuilder(main); };
+  main.querySelector('#pb-tab-login').onclick = () => { pageBuilderSubTab = 'login'; renderPageBuilder(main); };
+  const body = main.querySelector('#pb-body');
+  if(pageBuilderSubTab === 'dashboard') renderDashboardBlockBuilder(body);
+  else renderLoginPageBuilder(body);
+}
+function renderDashboardBlockBuilder(body){
+  if(!pageBlocksLoaded){
+    body.innerHTML = `<div class="kpi-grid">${Array(3).fill(0).map(skeletonCard).join('')}</div>`;
+    loadPageBlocks();
+    return;
+  }
+  body.innerHTML = `
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
+    <div class="card-box" style="max-width:none;">
+      ${pageBlocks.map((b,i) => `
+        <div style="display:flex; align-items:center; gap:12px; padding:10px 0; ${i<pageBlocks.length-1?'border-bottom:1px solid var(--line);':''}" data-id="${b.id}">
+          <div style="flex:1;">
+            <div style="font-weight:600; font-size:13.5px;">${BLOCK_LABEL[b.block_type]}</div>
+            <div style="font-size:11.5px; color:var(--ink-soft);">${blockConfigSummary(b)}</div>
+          </div>
+          <label style="display:flex; align-items:center; gap:6px; margin:0;"><input type="checkbox" class="pb-toggle" ${b.is_enabled?'checked':''} style="width:auto;" /></label>
+          <a class="pb-edit" style="font-size:12px; color:var(--stamp); cursor:pointer;">Edit</a>
+          <button class="pill-btn small pb-up" ${i===0?'disabled':''} style="padding:4px 9px;">↑</button>
+          <button class="pill-btn small pb-down" ${i===pageBlocks.length-1?'disabled':''} style="padding:4px 9px;">↓</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  body.querySelectorAll('[data-id]').forEach(row => {
+    const b = pageBlocks.find(x => x.id === row.dataset.id);
+    row.querySelector('.pb-toggle').onchange = () => toggleBlock(b);
+    row.querySelector('.pb-edit').onclick = () => openBlockConfigModal(b);
+    const up = row.querySelector('.pb-up'); if(!up.disabled) up.onclick = () => moveBlock(b, -1);
+    const down = row.querySelector('.pb-down'); if(!down.disabled) down.onclick = () => moveBlock(b, 1);
+  });
+}
+function loginBgFieldsHtml(d){
+  if(d.login_background_type === 'color'){
+    const c = (d.login_background_value || '').startsWith('#') ? d.login_background_value : '#FAF7F1';
+    return `<label>Warna Latar</label><input type="color" id="lp-bg-color" value="${c}" style="height:38px;padding:4px;" />`;
+  }
+  if(d.login_background_type === 'gradient'){
+    const found = (d.login_background_value || '').match(/#[0-9a-fA-F]{6}/g) || ['#1E3A5F','#FAF7F1'];
+    return `<label>Warna 1</label><input type="color" id="lp-bg-g1" value="${found[0]}" style="height:38px;padding:4px;" />
+            <label>Warna 2</label><input type="color" id="lp-bg-g2" value="${found[1]||'#FAF7F1'}" style="height:38px;padding:4px;" />`;
+  }
+  return `<label>Upload Gambar Latar (dioptimasi otomatis ke WebP, maks 5MB)</label><input type="file" id="lp-bg-file" accept="image/png,image/jpeg,image/webp" />
+          ${d.login_background_type==='image' && d.login_background_value ? `<div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">Sudah ada gambar tersimpan — upload baru untuk mengganti.</div>` : ''}`;
+}
+function currentPreviewBackground(d, body){
+  if(d.login_background_type === 'color') return body.querySelector('#lp-bg-color')?.value || d.login_background_value || d.background_color;
+  if(d.login_background_type === 'gradient'){
+    const g1 = body.querySelector('#lp-bg-g1')?.value, g2 = body.querySelector('#lp-bg-g2')?.value;
+    return `linear-gradient(135deg, ${g1||'#1E3A5F'}, ${g2||'#FAF7F1'})`;
+  }
+  return d.login_background_value ? `url('${withCacheBust(d.login_background_value, d.updated_at)}') center/cover` : d.background_color;
+}
+function updateLoginPreview(body){
+  const d = brandingDraft;
+  const prev = body.querySelector('#lp-preview');
+  if(!prev) return;
+  prev.style.background = currentPreviewBackground(d, body);
+  const footerText = body.querySelector('#lp-footer')?.value || '';
+  prev.innerHTML = `
+    ${d.logo_url ? `<img src="${withCacheBust(d.logo_url, d.updated_at)}" onerror="this.style.display='none'" style="width:44px;height:44px;object-fit:contain;margin:0 auto 10px;" />` : ''}
+    <div style="font-weight:700; font-size:16px; color:${d.text_color};">${d.login_title || 'Selamat Datang'}</div>
+    <div style="font-size:12px; color:${d.text_color}; opacity:.8; margin-top:2px;">${d.tagline || ''}</div>
+    <div style="font-size:12px; color:${d.text_color}; opacity:.7; margin-top:2px;">${d.login_subtitle || ''}</div>
+    <button style="margin-top:18px; border:none; border-radius:8px; padding:10px 22px; background:${d.primary_color}; color:#fff; font-weight:600;">Masuk</button>
+    ${footerText ? `<div style="font-size:10.5px; color:${d.text_color}; opacity:.6; margin-top:22px;">${footerText}</div>` : ''}
+  `;
+}
+function renderLoginPageBuilder(body){
+  if(!brandingLoaded){
+    body.innerHTML = `<div class="kpi-grid">${Array(3).fill(0).map(skeletonCard).join('')}</div>`;
+    loadBranding();
+    return;
+  }
+  const d = brandingDraft;
+  body.innerHTML = `
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
+    <div style="display:grid; grid-template-columns:1fr 340px; gap:24px; align-items:start;">
+      <div class="card-box" style="max-width:none;">
+        <p class="lead" style="margin:0 0 12px;">Logo, nama, & warna tema dikelola di tab <b>Branding & Page Builder</b> (atas) — di sini khusus atur latar & footer halaman login.</p>
+        <label>Tipe Latar Belakang</label>
+        <select id="lp-bg-type">
+          <option value="color" ${d.login_background_type==='color'?'selected':''}>Warna Solid</option>
+          <option value="gradient" ${d.login_background_type==='gradient'?'selected':''}>Gradient</option>
+          <option value="image" ${d.login_background_type==='image'?'selected':''}>Gambar</option>
+        </select>
+        <div id="lp-bg-fields">${loginBgFieldsHtml(d)}</div>
+        <label>Footer Teks</label><input id="lp-footer" value="${d.login_footer_text || ''}" placeholder="© 2026 Nama Perusahaan" />
+        <div class="field-err" id="lp-err" style="display:none;"></div>
+        <div class="modal-actions" style="max-width:none;">
+          <button class="pill-btn" id="lp-reset">Reset to Default</button>
+          <button class="btn-main" id="lp-save" style="margin-top:0; flex:1;">Simpan</button>
+        </div>
+      </div>
+      <div>
+        <div class="toolbar" style="margin-bottom:10px;">
+          <button class="pill-btn small ${loginPreviewMode==='desktop'?'good':''}" id="lp-prev-desktop">Desktop</button>
+          <button class="pill-btn small ${loginPreviewMode==='mobile'?'good':''}" id="lp-prev-mobile">Mobile</button>
+        </div>
+        <div style="border:1px solid var(--line); border-radius:12px; overflow:hidden; ${loginPreviewMode==='mobile'?'max-width:220px; margin:0 auto;':''}">
+          <div id="lp-preview" style="padding:32px 18px; text-align:center; min-height:260px; display:flex; flex-direction:column; justify-content:center;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  updateLoginPreview(body);
+  body.querySelector('#lp-prev-desktop').onclick = () => { loginPreviewMode = 'desktop'; renderLoginPageBuilder(body); };
+  body.querySelector('#lp-prev-mobile').onclick = () => { loginPreviewMode = 'mobile'; renderLoginPageBuilder(body); };
+  body.querySelector('#lp-bg-type').onchange = (e) => { brandingDraft = { ...brandingDraft, login_background_type: e.target.value }; renderLoginPageBuilder(body); };
+  body.querySelector('#lp-footer').oninput = () => updateLoginPreview(body);
+  ['#lp-bg-color','#lp-bg-g1','#lp-bg-g2'].forEach(sel => { const el = body.querySelector(sel); if(el) el.oninput = () => updateLoginPreview(body); });
+  body.querySelector('#lp-reset').onclick = () => {
+    brandingDraft = { ...brandingDraft, login_background_type:'color', login_background_value:'#FAF7F1', login_footer_text:'' };
+    renderLoginPageBuilder(body);
+  };
+  body.querySelector('#lp-save').onclick = async () => {
+    const errBox = body.querySelector('#lp-err'), saveBtn = body.querySelector('#lp-save');
+    errBox.style.display = 'none';
+    const patch = { login_footer_text: body.querySelector('#lp-footer').value.trim(), login_background_type: d.login_background_type };
+    if(d.login_background_type === 'color'){
+      patch.login_background_value = body.querySelector('#lp-bg-color').value;
+    } else if(d.login_background_type === 'gradient'){
+      const g1 = body.querySelector('#lp-bg-g1').value, g2 = body.querySelector('#lp-bg-g2').value;
+      patch.login_background_value = `linear-gradient(135deg, ${g1}, ${g2})`;
+    } else {
+      const file = body.querySelector('#lp-bg-file').files[0];
+      if(file){
+        saveBtn.disabled = true; saveBtn.textContent = 'Mengompres gambar…';
+        const r = await processAndUploadBackground(file);
+        if(r.error){ errBox.textContent = r.error; errBox.style.display='block'; saveBtn.disabled=false; saveBtn.textContent='Simpan'; return; }
+        patch.login_background_value = r.url;
+      } else {
+        patch.login_background_value = d.login_background_value;
+      }
+    }
+    saveLoginPage(patch, body);
+  };
+}
+function renderFeatures(main){
+  const f = getFeatures();
+  main.innerHTML = `
+    <h3 class="section-title">Fitur</h3>
+    <p class="section-sub">Nyalakan/matikan modul untuk perusahaan lo. Fitur yang dimatikan langsung hilang dari menu (dan untuk geofence/API-webhook, logic-nya juga berhenti dijalankan di server).</p>
+    <div class="card-box" style="max-width:460px;">
+      ${Object.keys(FEATURE_LABEL).map(k => `
+        <label style="display:flex; align-items:center; gap:8px; margin:12px 0 0;">
+          <input type="checkbox" class="ft-toggle" data-key="${k}" ${f[k] ? 'checked' : ''} style="width:auto;" />
+          <span style="font-weight:400; color:var(--ink); margin:0;">${FEATURE_LABEL[k]}</span>
+        </label>`).join('')}
+      <button class="btn-main" id="ft-save" ${state.busy?'disabled':''}>Simpan</button>
+      ${state.err ? `<div class="err">${state.err}</div>` : ''}
+      ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
+    </div>
+  `;
+  main.querySelector('#ft-save').onclick = () => {
+    const updated = {};
+    main.querySelectorAll('.ft-toggle').forEach(cb => { updated[cb.dataset.key] = cb.checked; });
+    updateFeatures(updated);
+  };
+}
+
+function renderFieldVisit(main){
+  if(!myFieldVisitLoaded){
+    main.innerHTML = `<h3 class="section-title">Kunjungan Lapangan</h3><div class="skeleton" style="height:120px;"></div>`;
+    loadMyFieldVisit();
+    return;
+  }
+  main.innerHTML = `
+    <h3 class="section-title">Kunjungan Lapangan</h3>
+    <p class="section-sub">Lokasi lo akan direkam tiap ± 1 menit selagi kunjungan aktif, supaya admin bisa lihat rute kasar lo di lapangan.</p>
+    ${myFieldVisit ? `
+      <div class="card-box" style="max-width:420px;">
+        <h4>Kunjungan sedang berlangsung</h4>
+        <div class="meta">Mulai ${fmtDateTime(myFieldVisit.start_time)}</div>
+        ${myFieldVisit.purpose ? `<div>${myFieldVisit.purpose}</div>` : ''}
+        <button class="btn-main" id="fv-end" ${state.busy?'disabled':''}>Selesai Kunjungan</button>
+      </div>
+    ` : `
+      <div class="card-box" style="max-width:420px;">
+        <label>Tujuan kunjungan</label><textarea id="fv-purpose" placeholder="Contoh: survei lokasi klien A"></textarea>
+        <button class="btn-main" id="fv-start" ${state.busy?'disabled':''}>Mulai Kunjungan Lapangan</button>
+      </div>
+    `}
+    ${state.err ? `<div class="err">${state.err}</div>` : ''}
+  `;
+  if(myFieldVisit) main.querySelector('#fv-end').onclick = endFieldVisit;
+  else main.querySelector('#fv-start').onclick = () => startFieldVisit(main.querySelector('#fv-purpose').value.trim());
+}
+
+function renderTracking(main){
+  main.innerHTML = `
+    <h3 class="section-title">Live Tracking</h3>
+    <p class="section-sub">Karyawan yang sedang kunjungan lapangan, dengan titik GPS terakhir mereka (± 1 menit terakhir).</p>
+    <div id="tr-list"></div>
+  `;
+  const box = main.querySelector('#tr-list');
+  if(!activeFieldVisitsLoaded){ box.innerHTML = Array(2).fill(0).map(()=>`<div class="skeleton" style="height:70px;margin-bottom:12px;"></div>`).join(''); }
+  else if(activeFieldVisits.length === 0){ box.innerHTML = `<div class="empty">Tidak ada kunjungan lapangan yang sedang berlangsung.</div>`; }
+  else {
+    box.innerHTML = activeFieldVisits.map(v => `
+      <div class="card-box">
+        <h4>${v.employees?.name || '—'}</h4>
+        <div class="meta">Mulai ${fmtDateTime(v.start_time)}${v.purpose ? ' · ' + v.purpose : ''}</div>
+        ${v.lastPoint ? `<a class="switch-link" style="margin:6px 0 0;" href="https://www.google.com/maps?q=${v.lastPoint.lat},${v.lastPoint.lng}" target="_blank">Buka lokasi terakhir di Google Maps (${fmtTime(v.lastPoint.recorded_at)})</a>` : `<div class="meta">Belum ada titik GPS tercatat.</div>`}
+      </div>`).join('');
+  }
+  if(!activeFieldVisitsLoaded) loadActiveFieldVisits();
+}
+
+function renderLeave(main){
+  main.innerHTML = `
+    <h3 class="section-title">Pengajuan</h3>
+    <p class="section-sub">Ajukan cuti, izin, koreksi absen, lembur, atau tukar shift. Alurnya lewat supervisor lo dulu (jika ada) sebelum ke HR.</p>
+    <div class="card-box">
+      <label>Jenis pengajuan</label>
+      <select id="lv-type">
+        <option value="cuti">Cuti</option><option value="izin">Izin</option>
+        <option value="koreksi_absen">Koreksi Absen</option>
+        ${getFeatures().overtime ? `<option value="lembur">Lembur</option>` : ''}
+        ${getFeatures().shift_swap ? `<option value="tukar_shift">Tukar Shift</option>` : ''}
+      </select>
+      <div class="two-col">
+        <div><label>Dari tanggal</label><input id="lv-start" type="date" /></div>
+        <div><label>Sampai tanggal</label><input id="lv-end" type="date" /></div>
+      </div>
+      <div id="lv-correction-fields" style="display:none;">
+        <div class="two-col">
+          <div><label>Jam tercatat (yang salah)</label><input id="lv-orig-time" type="time" /></div>
+          <div><label>Jam yang seharusnya</label><input id="lv-req-time" type="time" /></div>
+        </div>
+      </div>
+      <label>Keterangan</label><textarea id="lv-reason" placeholder="Jelaskan alasan pengajuan"></textarea>
+      <button class="btn-main" id="lv-submit" ${state.busy?'disabled':''}>Kirim Pengajuan</button>
+      ${state.err ? `<div class="err">${state.err}</div>` : ''}
+      ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
+    </div>
+    <h4 style="margin-top:28px;">Riwayat Pengajuan</h4>
+    <div id="lv-list"></div>
+  `;
+  const typeSelect = main.querySelector('#lv-type');
+  const correctionFields = main.querySelector('#lv-correction-fields');
+  const toggleCorrectionFields = () => { correctionFields.style.display = typeSelect.value === 'koreksi_absen' ? 'block' : 'none'; };
+  typeSelect.onchange = toggleCorrectionFields;
+  toggleCorrectionFields();
+  main.querySelector('#lv-submit').onclick = () => {
+    const type = typeSelect.value;
+    const start = main.querySelector('#lv-start').value;
+    const end = main.querySelector('#lv-end').value;
+    const reason = main.querySelector('#lv-reason').value.trim();
+    const origTime = main.querySelector('#lv-orig-time').value || null;
+    const reqTime = main.querySelector('#lv-req-time').value || null;
+    if(!start || !end){ setState({ err:'Tanggal wajib diisi.' }); return; }
+    if(type === 'koreksi_absen' && (!origTime || !reqTime)){ setState({ err:'Jam tercatat dan jam yang seharusnya wajib diisi untuk koreksi absen.' }); return; }
+    submitLeaveRequest(type, start, end, reason, origTime, reqTime);
+  };
+  const list = main.querySelector('#lv-list');
+  if(!myLeaveLoaded){ list.innerHTML = Array(2).fill(0).map(()=>`<div class="skeleton" style="height:70px;margin-bottom:14px;"></div>`).join(''); }
+  else if(myLeaveRequests.length === 0){ list.innerHTML = `<div class="empty">Belum ada pengajuan.</div>`; }
+  else {
+    list.innerHTML = myLeaveRequests.map(r => `
+      <div class="card-box">
+        <h4>${TYPE_LABEL[r.type]}</h4>
+        <div class="meta">${fmtDate(r.start_date)} s/d ${fmtDate(r.end_date)} · <span class="tag ${r.status}">${STATUS_LABEL[r.status]}</span></div>
+        ${r.type === 'koreksi_absen' && r.original_time ? `<div class="meta">Jam tercatat ${r.original_time.slice(0,5)} → diminta ${r.requested_time ? r.requested_time.slice(0,5) : '—'}</div>` : ''}
+        ${r.reason ? `<div>${r.reason}</div>` : ''}
+      </div>`).join('');
+  }
+  if(!myLeaveLoaded) loadMyLeaveRequests();
+}
+
+function renderHistory(main){
+  main.innerHTML = `
+    <h3 class="section-title">Riwayat Absensi Saya</h3>
+    <div id="h-timeline"></div>
+  `;
+  const box = main.querySelector('#h-timeline');
+  if(!myHistoryLoaded){
+    box.innerHTML = Array(4).fill(0).map(()=>`<div class="skeleton" style="height:52px; margin-bottom:12px;"></div>`).join('');
+  } else if(myHistory.length === 0){
+    box.innerHTML = `<div class="empty">Belum ada riwayat.</div>`;
+  } else {
+    box.innerHTML = `<div class="timeline">${myHistory.map(a => `
+      <div class="timeline-item">
+        <h5>${fmtDate(a.clock_in)} — <span class="tag ${a.status}">${a.status}</span></h5>
+        <div class="meta">Masuk ${fmtTime(a.clock_in)}${a.clock_out ? ' · Keluar ' + fmtTime(a.clock_out) : ' · belum absen keluar'}
+          ${a.within_geofence===false ? ' · di luar radius' : (a.within_geofence===true ? ' · dalam radius' : '')}
+          ${a.liveness_passed===true ? ' · wajah terverifikasi' : ''}
+        </div>
+      </div>`).join('')}</div>`;
+  }
+  loadMyHistory();
+}
+
+boot();
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
