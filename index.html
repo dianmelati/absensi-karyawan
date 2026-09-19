@@ -442,11 +442,14 @@ function runLivenessCapture(videoEl, statusEl){
         const leftEAR = eyeAspectRatio(lm.getLeftEye());
         const rightEAR = eyeAspectRatio(lm.getRightEye());
         const ear = (leftEAR + rightEAR) / 2;
-        earHistory.push(ear); if(earHistory.length > 10) earHistory.shift();
-        statusEl.textContent = 'Wajah terdeteksi — silakan berkedip…';
-        if(earHistory.length >= 5){
+        earHistory.push(ear); if(earHistory.length > 12) earHistory.shift();
+        statusEl.textContent = `Wajah terdeteksi — silakan berkedip… (EAR: ${ear.toFixed(2)})`;
+        if(earHistory.length >= 4){
           const min = Math.min(...earHistory), max = Math.max(...earHistory);
-          if(max - min > 0.09 && min < 0.19) blinkDetected = true;
+          // Thresholds loosened from the original 0.09/0.19 — the tiny
+          // landmark model (used here for speed) is less precise than the
+          // full model, so real blinks often don't register that low.
+          if(max - min > 0.05 && min < 0.24) blinkDetected = true;
         }
         if(blinkDetected){
           statusEl.textContent = 'Liveness terverifikasi ✓'; statusEl.className = 'cam-status ok';
