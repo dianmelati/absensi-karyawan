@@ -341,6 +341,14 @@ async function loadRecap(){
   const { data } = await sb.from('attendance').select('*, employees(name,nip)').eq('company_id', state.employee.company_id).order('clock_in',{ascending:false}).limit(100);
   recapList = data || []; recapListLoaded = true; render();
 }
+async function approveLivenessReview(id){
+  await sb.from('attendance').update({ needs_liveness_review:false }).eq('id', id);
+  recapListLoaded = false; setState({ msg:'Absensi disetujui.' });
+}
+async function rejectLivenessReview(id){
+  await sb.from('attendance').delete().eq('id', id);
+  closeModal(); recapListLoaded = false; setState({ msg:'Absensi ditolak & dihapus.' });
+}
 async function loadLocations(){
   const { data } = await sb.from('locations').select('*').eq('company_id', state.employee.company_id).order('created_at');
   locationsList = data || []; locationsLoaded = true; render();
@@ -453,6 +461,7 @@ function runLivenessCapture(videoEl, statusEl){
         }
         if(blinkDetected){
           statusEl.textContent = 'Liveness terverifikasi ✓'; statusEl.className = 'cam-status ok';
+          await new Promise(r => setTimeout(r, 400)); // let the face settle before the actual photo
           const blob = await captureFrame(videoEl);
           cleanup(); resolve({ selfieBlob: blob, livenessPassed:true, descriptor: Array.from(det.descriptor) }); return;
         }
@@ -631,6 +640,14 @@ async function addLocation(name, lat, lng, radius, type){
   const { error } = await sb.from('locations').insert({ company_id: state.employee.company_id, name, lat, lng, radius_meters: radius, type: type||'office' });
   if(error){ setState({ busy:false, err:'Gagal menambah lokasi: ' + error.message }); return; }
   setState({ busy:false }); await loadLocations();
+}
+async function deleteLocation(id, name){
+  await sb.from('locations').delete().eq('id', id);
+  closeModal(); locationsLoaded = false; setState({ msg:`Lokasi "${name}" dihapus.` });
+}
+async function deleteShift(id, name){
+  await sb.from('shifts').delete().eq('id', id);
+  closeModal(); shiftsLoaded = false; setState({ msg:`Shift "${name}" dihapus.` });
 }
 async function addShift(name, start, end){
   setState({ busy:true, err:null });
@@ -1631,7 +1648,8 @@ function platformSetupView(){
 function getFeatures(){
   return Object.assign({
     face_verification:true, geofence:true, field_visit:false, live_tracking:false,
-    shift_swap:true, overtime:true, payroll:true, api_webhook:true, multi_branch:true
+    shift_swap:true, overtime:true, payroll:true, api_webhook:true, multi_branch:true,
+    strict_liveness:false
   }, state.company?.features || {});
 }
 function navItemsFor(role){
@@ -1960,6 +1978,7 @@ function renderLocationsShifts(main){
   main.innerHTML = `
     <h3 class="section-title">Lokasi & Shift</h3>
     <p class="section-sub">Lokasi dipakai untuk validasi radius geofence saat absen. Shift dipakai untuk menentukan status "terlambat".</p>
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
     <div class="two-col">
       <div class="card-box">
         <h4>Tambah Lokasi Kantor</h4>
@@ -1973,7 +1992,7 @@ function renderLocationsShifts(main){
         <label>Radius (meter)</label><input id="loc-radius" value="150" />
         <button class="pill-btn small" id="loc-use-my" style="margin-top:10px;">Pakai lokasi saya sekarang</button>
         <button class="btn-main" id="loc-add" ${state.busy?'disabled':''}>Simpan Lokasi</button>
-        ${locationsList.map(l => `<div class="meta" style="margin-top:10px;">• ${l.name}${l.type==='project_site'?' (Project Site)':''} — radius ${l.radius_meters}m</div>`).join('')}
+        ${locationsList.map(l => `<div class="meta" style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:8px;" data-loc-id="${l.id}"><span>• ${l.name}${l.type==='project_site'?' (Project Site)':''} — radius ${l.radius_meters}m</span><a class="loc-del" style="color:var(--bad); cursor:pointer; font-size:12px; flex-shrink:0;">Hapus</a></div>`).join('')}
       </div>
       <div class="card-box">
         <h4>Tambah Shift</h4>
@@ -1983,7 +2002,7 @@ function renderLocationsShifts(main){
           <div><label>Jam pulang</label><input id="shift-end" type="time" value="17:00" /></div>
         </div>
         <button class="btn-main" id="shift-add" ${state.busy?'disabled':''}>Simpan Shift</button>
-        ${shiftsList.map(s => `<div class="meta" style="margin-top:10px;">• ${s.name} — ${s.start_time.slice(0,5)} s/d ${s.end_time.slice(0,5)}</div>`).join('')}
+        ${shiftsList.map(s => `<div class="meta" style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:8px;" data-shift-id="${s.id}"><span>• ${s.name} — ${s.start_time.slice(0,5)} s/d ${s.end_time.slice(0,5)}</span><a class="shift-del" style="color:var(--bad); cursor:pointer; font-size:12px; flex-shrink:0;">Hapus</a></div>`).join('')}
       </div>
     </div>
     ${state.err ? `<div class="err">${state.err}</div>` : ''}
@@ -2008,6 +2027,20 @@ function renderLocationsShifts(main){
     if(!name){ setState({ err:'Nama shift wajib diisi.' }); return; }
     addShift(name, start, end);
   };
+  main.querySelectorAll('[data-loc-id]').forEach(row => {
+    const loc = locationsList.find(l => l.id === row.dataset.locId);
+    row.querySelector('.loc-del').onclick = () => openConfirmModal({
+      title:'Hapus Lokasi?', body:`"${loc.name}" akan dihapus. Karyawan yang absen akan divalidasi tanpa lokasi ini.`,
+      confirmLabel:'Ya, Hapus', danger:true, onConfirm:() => deleteLocation(loc.id, loc.name)
+    });
+  });
+  main.querySelectorAll('[data-shift-id]').forEach(row => {
+    const sh = shiftsList.find(s => s.id === row.dataset.shiftId);
+    row.querySelector('.shift-del').onclick = () => openConfirmModal({
+      title:'Hapus Shift?', body:`"${sh.name}" akan dihapus. Karyawan yang masih pakai shift ini perlu di-assign ulang.`,
+      confirmLabel:'Ya, Hapus', danger:true, onConfirm:() => deleteShift(sh.id, sh.name)
+    });
+  });
   if(!locationsLoaded) loadLocations();
   if(!shiftsLoaded) loadShifts();
 }
@@ -2048,24 +2081,35 @@ function renderRecap(main){
   main.innerHTML = `
     <h3 class="section-title">Rekap Absensi</h3>
     <p class="section-sub">100 catatan absensi terbaru di perusahaan lo.</p>
-    <table><thead><tr><th>Nama</th><th>Masuk</th><th>Keluar</th><th>Status</th><th>Geofence</th><th>Liveness</th><th>Telat</th><th>Potongan</th></tr></thead>
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
+    <table><thead><tr><th>Nama</th><th>Masuk</th><th>Keluar</th><th>Status</th><th>Geofence</th><th>Liveness</th><th>Telat</th><th>Potongan</th><th></th></tr></thead>
     <tbody id="r-rows"></tbody></table>
   `;
   const rows = main.querySelector('#r-rows');
-  if(!recapListLoaded){ rows.innerHTML = Array(4).fill(0).map(()=>`<tr><td colspan="8"><div class="skeleton" style="height:18px;"></div></td></tr>`).join(''); }
-  else if(recapList.length === 0){ rows.innerHTML = `<tr><td colspan="8" class="empty">Belum ada data absensi.</td></tr>`; }
+  if(!recapListLoaded){ rows.innerHTML = Array(4).fill(0).map(()=>`<tr><td colspan="9"><div class="skeleton" style="height:18px;"></div></td></tr>`).join(''); }
+  else if(recapList.length === 0){ rows.innerHTML = `<tr><td colspan="9" class="empty">Belum ada data absensi.</td></tr>`; }
   else {
     rows.innerHTML = recapList.map(a => `
-      <tr>
+      <tr data-id="${a.id}">
         <td>${a.employees?.name || '—'}</td>
         <td>${fmtDateTime(a.clock_in)}</td>
         <td>${a.clock_out ? fmtDateTime(a.clock_out) : '—'}</td>
         <td><span class="tag ${a.status}">${a.status}</span></td>
         <td>${a.within_geofence===null || a.within_geofence===undefined ? '—' : `<span class="tag ${a.within_geofence?'geo-ok':'geo-bad'}">${a.within_geofence? 'Dalam radius':'Luar radius'}</span>`}</td>
-        <td>${a.liveness_passed===null || a.liveness_passed===undefined ? '—' : `<span class="tag ${a.liveness_passed?'geo-ok':'geo-bad'}">${a.liveness_passed? 'Terverifikasi':'Gagal'}</span>`}${a.selfie_url ? ` <a href="${a.selfie_url}" target="_blank" style="font-size:11px;">lihat foto</a>` : ''}</td>
+        <td>${a.liveness_passed===null || a.liveness_passed===undefined ? '—' : `<span class="tag ${a.liveness_passed?'geo-ok':'geo-bad'}">${a.liveness_passed? 'Terverifikasi':'Gagal'}</span>`}${a.needs_liveness_review ? ` <span class="tag suspended">Perlu Review</span>` : ''}${a.selfie_url ? ` <a href="${a.selfie_url}" target="_blank" style="font-size:11px;">lihat foto</a>` : ''}</td>
         <td>${a.late_minutes ? a.late_minutes + ' mnt' : '—'}</td>
         <td>${a.penalty_amount ? 'Rp' + Number(a.penalty_amount).toLocaleString('id-ID') : '—'}</td>
+        <td>${a.needs_liveness_review ? `<div class="action-links"><a class="rv-approve">Setujui</a><a class="rv-reject danger">Tolak</a></div>` : ''}</td>
       </tr>`).join('');
+    rows.querySelectorAll('[data-id]').forEach(tr => {
+      const approve = tr.querySelector('.rv-approve');
+      const reject = tr.querySelector('.rv-reject');
+      if(approve) approve.onclick = () => approveLivenessReview(tr.dataset.id);
+      if(reject) reject.onclick = () => openConfirmModal({
+        title:'Tolak Absensi Ini?', body:'Catatan absensi ini akan dihapus karena verifikasi wajah gagal dan tidak disetujui admin.',
+        confirmLabel:'Ya, Tolak & Hapus', danger:true, onConfirm:() => rejectLivenessReview(tr.dataset.id)
+      });
+    });
   }
   if(!recapListLoaded) loadRecap();
 }
@@ -2248,7 +2292,8 @@ const FEATURE_LABEL = {
   face_verification:'Face Verification (liveness saat absen)', geofence:'Geofence (validasi radius lokasi)',
   field_visit:'Field Visit & Live Tracking', live_tracking:'Live Tracking Rute Karyawan',
   shift_swap:'Tukar Shift', overtime:'Lembur', payroll:'Payroll & Export',
-  api_webhook:'API & Webhook', multi_branch:'Multi Cabang'
+  api_webhook:'API & Webhook', multi_branch:'Multi Cabang',
+  strict_liveness:'Wajibkan Verifikasi Wajah — kalau gagal, absen ditahan sampai disetujui admin'
 };
 function renderBranding(main){
   if(!brandingLoaded){
