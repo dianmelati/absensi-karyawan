@@ -655,20 +655,21 @@ async function addShift(name, start, end){
   if(error){ setState({ busy:false, err:'Gagal menambah shift: ' + error.message }); return; }
   setState({ busy:false }); await loadShifts();
 }
-async function updatePenaltySettings(tolerance, rate){
+async function updatePenaltySettings(tolerance, rate, overtimeRate, leaveQuota){
   setState({ busy:true, err:null });
-  const { data, error } = await sb.from('companies').update({ late_tolerance_minutes: tolerance, penalty_per_minute: rate }).eq('id', state.employee.company_id).select().single();
+  const { data, error } = await sb.from('companies').update({ late_tolerance_minutes: tolerance, penalty_per_minute: rate, overtime_rate_per_hour: overtimeRate, annual_leave_quota_days: leaveQuota }).eq('id', state.employee.company_id).select().single();
   if(error){ setState({ busy:false, err:'Gagal menyimpan pengaturan: ' + error.message }); return; }
-  setState({ busy:false, company:data, msg:'Pengaturan penalti disimpan.' });
+  setState({ busy:false, company:data, msg:'Pengaturan disimpan.' });
 }
 
 // ---------------- ACTIONS: LEAVE REQUESTS ----------------
-async function submitLeaveRequest(type, startDate, endDate, reason, originalTime, requestedTime){
+async function submitLeaveRequest(type, startDate, endDate, reason, originalTime, requestedTime, overtimeHours){
   setState({ busy:true, err:null });
   const { error } = await sb.from('leave_requests').insert({
     company_id: state.employee.company_id, employee_id: state.employee.id,
     type, start_date:startDate, end_date:endDate, reason,
-    original_time: originalTime || null, requested_time: requestedTime || null
+    original_time: originalTime || null, requested_time: requestedTime || null,
+    overtime_hours: overtimeHours || null
   });
   if(error){ setState({ busy:false, err:'Gagal mengirim pengajuan: ' + error.message }); return; }
   setState({ busy:false, msg:'Pengajuan terkirim.' }); await loadMyLeaveRequests();
@@ -1496,27 +1497,85 @@ async function updateApiWebhookSettings(apiKey, webhookUrl){
 }
 
 // ---------------- ADMIN: PAYROLL EXPORT (.xlsx & .pdf) ----------------
+// ---------------- GAJI KARYAWAN (payroll) ----------------
+let employeeSalaries = [], employeeSalariesLoaded = false;
+let mySalary = null, mySalaryLoaded = false;
+let payslipMonth = new Date().toISOString().slice(0,7);
+
+async function loadEmployeeSalaries(){
+  const { data } = await sb.from('employee_salary').select('*').eq('company_id', state.employee.company_id);
+  employeeSalaries = data || []; employeeSalariesLoaded = true; render();
+}
+async function saveEmployeeSalary(employeeId, baseSalary, allowance, rowEl){
+  const btn = rowEl.querySelector('.sal-save');
+  if(btn){ btn.disabled = true; btn.textContent = 'Menyimpan…'; }
+  const { error } = await sb.from('employee_salary')
+    .upsert({ employee_id: employeeId, company_id: state.employee.company_id, base_salary: baseSalary, allowance: allowance }, { onConflict:'employee_id' });
+  if(error){ setState({ err:'Gagal menyimpan gaji: ' + error.message }); return; }
+  employeeSalariesLoaded = false; setState({ msg:'Pengaturan gaji disimpan.' });
+}
+async function loadMySalary(){
+  const { data } = await sb.from('employee_salary').select('*').eq('employee_id', state.employee.id).maybeSingle();
+  mySalary = data || { base_salary:0, allowance:0 }; mySalaryLoaded = true; render();
+}
+// Sums this month's late-penalty deductions for one employee — same source
+// numbers already used by Export Payroll, just scoped to a single person.
+async function monthlyPenaltyFor(employeeId, monthStr){
+  const start = monthStr + '-01T00:00:00';
+  const end = new Date(new Date(start).getFullYear(), new Date(start).getMonth()+1, 1).toISOString();
+  const { data } = await sb.from('attendance').select('penalty_amount').eq('employee_id', employeeId).gte('clock_in', start).lt('clock_in', end);
+  return (data || []).reduce((sum, a) => sum + Number(a.penalty_amount || 0), 0);
+}
+// Sums approved 'cuti' days used so far this calendar year (inclusive day count).
+async function usedLeaveDaysThisYear(employeeId){
+  const year = new Date().getFullYear();
+  const { data } = await sb.from('leave_requests').select('start_date, end_date').eq('employee_id', employeeId).eq('type','cuti').eq('status','approved').gte('start_date', `${year}-01-01`).lte('start_date', `${year}-12-31`);
+  return (data || []).reduce((sum, r) => {
+    const days = Math.round((new Date(r.end_date) - new Date(r.start_date)) / 86400000) + 1;
+    return sum + Math.max(1, days);
+  }, 0);
+}
+async function monthlyOvertimeHoursFor(employeeId, monthStr){
+  const start = monthStr + '-01', end = new Date(new Date(start).getFullYear(), new Date(start).getMonth()+1, 1).toISOString().slice(0,10);
+  const { data } = await sb.from('leave_requests').select('overtime_hours').eq('employee_id', employeeId).eq('type','lembur').eq('status','approved').gte('start_date', start).lt('start_date', end);
+  return (data || []).reduce((sum, r) => sum + Number(r.overtime_hours || 0), 0);
+}
+
 async function fetchPayrollData(monthStr){ // monthStr = 'YYYY-MM'
   const start = monthStr + '-01T00:00:00';
   const end = new Date(new Date(start).getFullYear(), new Date(start).getMonth()+1, 1).toISOString();
-  const { data } = await sb.from('attendance').select('*, employees(name,nip)')
-    .eq('company_id', state.employee.company_id).gte('clock_in', start).lt('clock_in', end);
+  const startDate = monthStr + '-01', endDate = end.slice(0,10);
+  const otRate = Number(state.company?.overtime_rate_per_hour || 0);
+  const [{ data: attData }, { data: empData }, { data: salData }, { data: otData }] = await Promise.all([
+    sb.from('attendance').select('*, employees(id,name,nip)').eq('company_id', state.employee.company_id).gte('clock_in', start).lt('clock_in', end),
+    sb.from('employees').select('id,name,nip').eq('company_id', state.employee.company_id),
+    sb.from('employee_salary').select('*').eq('company_id', state.employee.company_id),
+    sb.from('leave_requests').select('employee_id, overtime_hours').eq('company_id', state.employee.company_id).eq('type','lembur').eq('status','approved').gte('start_date', startDate).lt('start_date', endDate)
+  ]);
+  const salaryByEmp = {}; (salData||[]).forEach(s => { salaryByEmp[s.employee_id] = s; });
+  const overtimeByEmp = {}; (otData||[]).forEach(o => { overtimeByEmp[o.employee_id] = (overtimeByEmp[o.employee_id]||0) + Number(o.overtime_hours||0); });
   const byEmployee = {};
-  (data||[]).forEach(a => {
-    const key = a.employees?.name || 'Tidak diketahui';
-    if(!byEmployee[key]) byEmployee[key] = { nip:a.employees?.nip||'', hadir:0, terlambat:0, totalLateMinutes:0, totalPenalty:0 };
-    byEmployee[key].hadir += 1;
-    if(a.status === 'terlambat') byEmployee[key].terlambat += 1;
-    byEmployee[key].totalLateMinutes += a.late_minutes || 0;
-    byEmployee[key].totalPenalty += Number(a.penalty_amount || 0);
+  (empData||[]).forEach(e => {
+    const s = salaryByEmp[e.id] || { base_salary:0, allowance:0 };
+    const otHours = overtimeByEmp[e.id] || 0;
+    byEmployee[e.id] = { name:e.name, nip:e.nip||'', hadir:0, terlambat:0, totalLateMinutes:0, totalPenalty:0, baseSalary:Number(s.base_salary), allowance:Number(s.allowance), overtimeHours:otHours, overtimePay:otHours*otRate };
   });
-  return Object.entries(byEmployee).map(([name, v]) => ({ name, ...v }));
+  (attData||[]).forEach(a => {
+    const eid = a.employees?.id; if(!eid || !byEmployee[eid]) return;
+    byEmployee[eid].hadir += 1;
+    if(a.status === 'terlambat') byEmployee[eid].terlambat += 1;
+    byEmployee[eid].totalLateMinutes += a.late_minutes || 0;
+    byEmployee[eid].totalPenalty += Number(a.penalty_amount || 0);
+  });
+  return Object.values(byEmployee).map(v => ({ ...v, netPay: v.baseSalary + v.allowance + v.overtimePay - v.totalPenalty }));
 }
 async function exportPayrollXlsx(monthStr){
   const rows = await fetchPayrollData(monthStr);
   const ws = XLSX.utils.json_to_sheet(rows.map(r => ({
     'Nama': r.name, 'NIP': r.nip, 'Total Hadir': r.hadir, 'Total Terlambat': r.terlambat,
-    'Total Menit Telat': r.totalLateMinutes, 'Total Potongan (Rp)': r.totalPenalty
+    'Total Menit Telat': r.totalLateMinutes, 'Gaji Pokok (Rp)': r.baseSalary, 'Tunjangan (Rp)': r.allowance,
+    'Jam Lembur': r.overtimeHours, 'Upah Lembur (Rp)': r.overtimePay,
+    'Total Potongan (Rp)': r.totalPenalty, 'Gaji Bersih (Rp)': r.netPay
   })));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Payroll');
@@ -1529,8 +1588,11 @@ async function exportPayrollPdf(monthStr){
   doc.setFontSize(14); doc.text(`Rekap Payroll — ${monthStr}`, 14, 16);
   doc.autoTable({
     startY: 22,
-    head: [['Nama','NIP','Hadir','Terlambat','Menit Telat','Potongan (Rp)']],
-    body: rows.map(r => [r.name, r.nip, r.hadir, r.terlambat, r.totalLateMinutes, Number(r.totalPenalty).toLocaleString('id-ID')])
+    head: [['Nama','NIP','Hadir','Terlambat','Menit Telat','Gaji Pokok','Tunjangan','Jam Lembur','Upah Lembur','Potongan','Gaji Bersih']],
+    body: rows.map(r => [r.name, r.nip, r.hadir, r.terlambat, r.totalLateMinutes,
+      Number(r.baseSalary).toLocaleString('id-ID'), Number(r.allowance).toLocaleString('id-ID'),
+      r.overtimeHours, Number(r.overtimePay).toLocaleString('id-ID'),
+      Number(r.totalPenalty).toLocaleString('id-ID'), Number(r.netPay).toLocaleString('id-ID')])
   });
   doc.save(`payroll-${monthStr}.pdf`);
 }
@@ -1657,8 +1719,8 @@ function navItemsFor(role){
   if(role === 'admin') return [
     {key:'dashboard',label:'Dashboard'}, {key:'clock',label:'Absen Saya'}, {key:'employees',label:'Karyawan'},
     {key:'org',label:'Organisasi'}, {key:'locations',label:'Lokasi & Shift'}, {key:'approvals',label:'Approval'},
-    {key:'recap',label:'Rekap Absensi'}, {key:'reports',label:'Laporan'}, {key:'settings',label:'Pengaturan Penalti'},
-    ...(f.payroll ? [{key:'payroll',label:'Export Payroll'}] : []),
+    {key:'recap',label:'Rekap Absensi'}, {key:'reports',label:'Laporan'}, {key:'settings',label:'Pengaturan Penalti & Lembur'},
+    ...(f.payroll ? [{key:'salary',label:'Gaji Karyawan'}, {key:'payroll',label:'Export Payroll'}] : []),
     ...(f.live_tracking ? [{key:'tracking',label:'Live Tracking'}] : []),
     {key:'devices',label:'Device'}, {key:'audit',label:'Audit Trail'}, {key:'backup',label:'Backup'},
     ...(f.api_webhook ? [{key:'api',label:'API & Webhook'}] : []),
@@ -1673,7 +1735,8 @@ function navItemsFor(role){
   return [
     {key:'clock',label:'Absen'},
     ...(f.field_visit ? [{key:'fieldvisit',label:'Kunjungan Lapangan'}] : []),
-    {key:'leave',label:'Pengajuan'}, {key:'history',label:'Riwayat'}
+    {key:'leave',label:'Pengajuan'}, {key:'history',label:'Riwayat'},
+    ...(f.payroll ? [{key:'payslip',label:'Slip Gaji'}] : [])
   ];
 }
 
@@ -1843,7 +1906,9 @@ function renderTab(main, tab, role){
   if(tab === 'approvals'){ renderApprovals(main, role); return; }
   if(tab === 'recap'){ renderRecap(main); return; }
   if(tab === 'settings'){ renderSettings(main); return; }
+  if(tab === 'salary'){ renderSalarySetup(main); return; }
   if(tab === 'payroll'){ renderPayroll(main); return; }
+  if(tab === 'payslip'){ renderPayslip(main); return; }
   if(tab === 'api'){ renderApiSettings(main); return; }
   if(tab === 'leave'){ renderLeave(main); return; }
   if(tab === 'history'){ renderHistory(main); return; }
@@ -2059,7 +2124,8 @@ function renderApprovals(main, role){
     list.innerHTML = pendingApprovals.map(r => `
       <div class="card-box" data-id="${r.id}">
         <h4>${TYPE_LABEL[r.type]} — ${r.employees?.name || ''}</h4>
-        <div class="meta">${fmtDate(r.start_date)} s/d ${fmtDate(r.end_date)} · <span class="tag ${r.status}">${STATUS_LABEL[r.status]}</span></div>
+        <div class="meta">${fmtDate(r.start_date)} s/d ${fmtDate(r.end_date)} · <span class="tag ${r.status}">${STATUS_LABEL[r.status]}</span>${r.type==='lembur' && r.overtime_hours ? ` · ${r.overtime_hours} jam` : ''}</div>
+        ${r.type==='cuti' ? `<div class="meta cuti-quota" data-emp="${r.employee_id}">Memuat sisa cuti…</div>` : ''}
         <div>${r.reason || '<span class="empty">Tanpa keterangan.</span>'}</div>
         <input class="ap-note" placeholder="Catatan (opsional)" style="margin-top:10px;" />
         <div class="row-actions">
@@ -2067,6 +2133,10 @@ function renderApprovals(main, role){
           <button class="pill-btn bad ap-reject">Tolak</button>
         </div>
       </div>`).join('');
+    const quota = state.company?.annual_leave_quota_days ?? 12;
+    list.querySelectorAll('.cuti-quota').forEach(el => {
+      usedLeaveDaysThisYear(el.dataset.emp).then(used => { el.textContent = `Sisa cuti tahun ini: ${Math.max(0, quota - used)} dari ${quota} hari`; });
+    });
     list.querySelectorAll('.card-box').forEach(box => {
       const id = box.dataset.id;
       const note = () => box.querySelector('.ap-note').value.trim();
@@ -2117,12 +2187,16 @@ function renderRecap(main){
 function renderSettings(main){
   const tol = state.company?.late_tolerance_minutes ?? 15;
   const rate = state.company?.penalty_per_minute ?? 0;
+  const otRate = state.company?.overtime_rate_per_hour ?? 0;
+  const leaveQuota = state.company?.annual_leave_quota_days ?? 12;
   main.innerHTML = `
-    <h3 class="section-title">Pengaturan Penalti Keterlambatan</h3>
+    <h3 class="section-title">Pengaturan Penalti & Lembur</h3>
     <p class="section-sub">Dihitung otomatis berdasarkan jam mulai shift tiap karyawan. Toleransi tidak kena potongan; setelah itu, tiap menit kena tarif di bawah.</p>
     <div class="card-box" style="max-width:400px;">
       <label>Toleransi keterlambatan (menit)</label><input id="st-tol" value="${tol}" />
       <label>Potongan per menit setelah toleransi (Rp)</label><input id="st-rate" value="${rate}" />
+      ${getFeatures().overtime ? `<label>Tarif lembur per jam (Rp)</label><input id="st-ot-rate" value="${otRate}" />` : ''}
+      <label>Kuota cuti tahunan (hari/karyawan)</label><input id="st-leave-quota" value="${leaveQuota}" />
       <button class="btn-main" id="st-save" ${state.busy?'disabled':''}>Simpan</button>
       ${state.err ? `<div class="err">${state.err}</div>` : ''}
       ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
@@ -2131,15 +2205,86 @@ function renderSettings(main){
   main.querySelector('#st-save').onclick = () => {
     const tolerance = parseInt(main.querySelector('#st-tol').value || '0');
     const r = parseFloat(main.querySelector('#st-rate').value || '0');
-    updatePenaltySettings(tolerance, r);
+    const otr = getFeatures().overtime ? parseFloat(main.querySelector('#st-ot-rate')?.value || '0') : otRate;
+    const lq = parseInt(main.querySelector('#st-leave-quota').value || '0');
+    updatePenaltySettings(tolerance, r, otr, lq);
   };
 }
 
+function renderSalarySetup(main){
+  if(!employeeListLoaded || !employeeSalariesLoaded){
+    main.innerHTML = `<h3 class="section-title">Gaji Karyawan</h3><div class="kpi-grid">${Array(3).fill(0).map(skeletonCard).join('')}</div>`;
+    if(!employeeListLoaded) loadEmployeeList();
+    if(!employeeSalariesLoaded) loadEmployeeSalaries();
+    return;
+  }
+  const salByEmp = {}; employeeSalaries.forEach(s => { salByEmp[s.employee_id] = s; });
+  main.innerHTML = `
+    <h3 class="section-title">Gaji Karyawan</h3>
+    <p class="section-sub">Set gaji pokok & tunjangan per karyawan. Potongan keterlambatan otomatis ikut dihitung dari data absensi — hanya angka gaji bersih sebelum pajak/BPJS (itu belum dihitung otomatis di sini).</p>
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
+    ${state.err ? `<div class="err" style="margin-bottom:14px;">${state.err}</div>` : ''}
+    <table><thead><tr><th>Nama</th><th>Gaji Pokok (Rp)</th><th>Tunjangan (Rp)</th><th></th></tr></thead>
+    <tbody id="sal-rows"></tbody></table>
+  `;
+  const rows = main.querySelector('#sal-rows');
+  if(employeeList.length === 0){ rows.innerHTML = `<tr><td colspan="4" class="empty">Belum ada karyawan.</td></tr>`; return; }
+  rows.innerHTML = employeeList.map(e => {
+    const s = salByEmp[e.id] || { base_salary:0, allowance:0 };
+    return `<tr data-id="${e.id}">
+      <td>${e.name}</td>
+      <td><input class="sal-base" value="${s.base_salary}" style="max-width:140px;" /></td>
+      <td><input class="sal-allow" value="${s.allowance}" style="max-width:140px;" /></td>
+      <td><button class="pill-btn small sal-save">Simpan</button></td>
+    </tr>`;
+  }).join('');
+  rows.querySelectorAll('[data-id]').forEach(tr => {
+    tr.querySelector('.sal-save').onclick = () => {
+      const base = parseFloat(tr.querySelector('.sal-base').value || '0');
+      const allow = parseFloat(tr.querySelector('.sal-allow').value || '0');
+      saveEmployeeSalary(tr.dataset.id, base, allow, tr);
+    };
+  });
+}
+function renderPayslip(main){
+  if(!mySalaryLoaded){
+    main.innerHTML = `<h3 class="section-title">Slip Gaji</h3><div class="skeleton" style="height:180px;"></div>`;
+    loadMySalary();
+    return;
+  }
+  main.innerHTML = `
+    <h3 class="section-title">Slip Gaji</h3>
+    <p class="section-sub">Angka gaji bersih di sini belum termasuk potongan pajak/BPJS — tanyakan HR/admin untuk slip final.</p>
+    <label style="max-width:200px;">Pilih bulan</label><input id="ps-month" type="month" value="${payslipMonth}" style="max-width:200px;" />
+    <div class="card-box" id="ps-card" style="max-width:400px; margin-top:16px;"></div>
+  `;
+  const renderCard = async () => {
+    const card = main.querySelector('#ps-card');
+    card.innerHTML = `<div class="skeleton" style="height:140px;"></div>`;
+    const [penalty, otHours] = await Promise.all([
+      monthlyPenaltyFor(state.employee.id, payslipMonth),
+      getFeatures().overtime ? monthlyOvertimeHoursFor(state.employee.id, payslipMonth) : Promise.resolve(0)
+    ]);
+    const otRate = Number(state.company?.overtime_rate_per_hour || 0);
+    const otPay = otHours * otRate;
+    const base = Number(mySalary.base_salary || 0), allow = Number(mySalary.allowance || 0);
+    const net = base + allow + otPay - penalty;
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line);"><span>Gaji Pokok</span><span>Rp${base.toLocaleString('id-ID')}</span></div>
+      <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line);"><span>Tunjangan</span><span>Rp${allow.toLocaleString('id-ID')}</span></div>
+      ${otHours > 0 ? `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line);"><span>Lembur (${otHours} jam)</span><span>Rp${otPay.toLocaleString('id-ID')}</span></div>` : ''}
+      <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); color:var(--bad);"><span>Potongan Keterlambatan</span><span>-Rp${penalty.toLocaleString('id-ID')}</span></div>
+      <div style="display:flex; justify-content:space-between; padding:10px 0 0; font-weight:700; font-size:16px;"><span>Gaji Bersih</span><span>Rp${net.toLocaleString('id-ID')}</span></div>
+    `;
+  };
+  main.querySelector('#ps-month').onchange = (e) => { payslipMonth = e.target.value; renderCard(); };
+  renderCard();
+}
 function renderPayroll(main){
   const thisMonth = new Date().toISOString().slice(0,7);
   main.innerHTML = `
     <h3 class="section-title">Export Payroll</h3>
-    <p class="section-sub">Rekap hadir, terlambat, dan potongan otomatis per bulan, siap dipakai untuk proses payroll.</p>
+    <p class="section-sub">Rekap hadir, terlambat, gaji pokok, tunjangan, dan potongan otomatis per bulan — gaji bersih sebelum pajak/BPJS, siap diserahkan ke software akuntansi/HR untuk proses lebih lanjut.</p>
     <div class="card-box" style="max-width:400px;">
       <label>Pilih bulan</label><input id="pr-month" type="month" value="${thisMonth}" />
       <div class="row-actions" style="margin-top:14px;">
@@ -2291,7 +2436,7 @@ function renderBackup(main){
 const FEATURE_LABEL = {
   face_verification:'Face Verification (liveness saat absen)', geofence:'Geofence (validasi radius lokasi)',
   field_visit:'Field Visit & Live Tracking', live_tracking:'Live Tracking Rute Karyawan',
-  shift_swap:'Tukar Shift', overtime:'Lembur', payroll:'Payroll & Export',
+  shift_swap:'Tukar Shift', overtime:'Lembur', payroll:'Gaji & Export Payroll (angka belum termasuk pajak/BPJS — matikan kalau perusahaan lo urus gaji lewat sistem lain)',
   api_webhook:'API & Webhook', multi_branch:'Multi Cabang',
   strict_liveness:'Wajibkan Verifikasi Wajah — kalau gagal, absen ditahan sampai disetujui admin'
 };
@@ -2647,6 +2792,7 @@ function renderLeave(main){
   main.innerHTML = `
     <h3 class="section-title">Pengajuan</h3>
     <p class="section-sub">Ajukan cuti, izin, koreksi absen, lembur, atau tukar shift. Alurnya lewat supervisor lo dulu (jika ada) sebelum ke HR.</p>
+    <div id="lv-quota" class="meta" style="margin-bottom:14px;"></div>
     <div class="card-box">
       <label>Jenis pengajuan</label>
       <select id="lv-type">
@@ -2665,6 +2811,9 @@ function renderLeave(main){
           <div><label>Jam yang seharusnya</label><input id="lv-req-time" type="time" /></div>
         </div>
       </div>
+      <div id="lv-overtime-fields" style="display:none;">
+        <label>Jumlah jam lembur</label><input id="lv-hours" type="number" min="0.5" step="0.5" placeholder="cth: 2" />
+      </div>
       <label>Keterangan</label><textarea id="lv-reason" placeholder="Jelaskan alasan pengajuan"></textarea>
       <button class="btn-main" id="lv-submit" ${state.busy?'disabled':''}>Kirim Pengajuan</button>
       ${state.err ? `<div class="err">${state.err}</div>` : ''}
@@ -2675,9 +2824,18 @@ function renderLeave(main){
   `;
   const typeSelect = main.querySelector('#lv-type');
   const correctionFields = main.querySelector('#lv-correction-fields');
-  const toggleCorrectionFields = () => { correctionFields.style.display = typeSelect.value === 'koreksi_absen' ? 'block' : 'none'; };
+  const overtimeFields = main.querySelector('#lv-overtime-fields');
+  const toggleCorrectionFields = () => {
+    correctionFields.style.display = typeSelect.value === 'koreksi_absen' ? 'block' : 'none';
+    overtimeFields.style.display = typeSelect.value === 'lembur' ? 'block' : 'none';
+  };
   typeSelect.onchange = toggleCorrectionFields;
   toggleCorrectionFields();
+  const quota = state.company?.annual_leave_quota_days ?? 12;
+  usedLeaveDaysThisYear(state.employee.id).then(used => {
+    const el = main.querySelector('#lv-quota');
+    if(el) el.textContent = `Sisa cuti tahun ini: ${Math.max(0, quota - used)} dari ${quota} hari`;
+  });
   main.querySelector('#lv-submit').onclick = () => {
     const type = typeSelect.value;
     const start = main.querySelector('#lv-start').value;
@@ -2685,9 +2843,11 @@ function renderLeave(main){
     const reason = main.querySelector('#lv-reason').value.trim();
     const origTime = main.querySelector('#lv-orig-time').value || null;
     const reqTime = main.querySelector('#lv-req-time').value || null;
+    const hours = main.querySelector('#lv-hours').value ? parseFloat(main.querySelector('#lv-hours').value) : null;
     if(!start || !end){ setState({ err:'Tanggal wajib diisi.' }); return; }
     if(type === 'koreksi_absen' && (!origTime || !reqTime)){ setState({ err:'Jam tercatat dan jam yang seharusnya wajib diisi untuk koreksi absen.' }); return; }
-    submitLeaveRequest(type, start, end, reason, origTime, reqTime);
+    if(type === 'lembur' && (!hours || hours <= 0)){ setState({ err:'Jumlah jam lembur wajib diisi.' }); return; }
+    submitLeaveRequest(type, start, end, reason, origTime, reqTime, hours);
   };
   const list = main.querySelector('#lv-list');
   if(!myLeaveLoaded){ list.innerHTML = Array(2).fill(0).map(()=>`<div class="skeleton" style="height:70px;margin-bottom:14px;"></div>`).join(''); }
@@ -2698,6 +2858,7 @@ function renderLeave(main){
         <h4>${TYPE_LABEL[r.type]}</h4>
         <div class="meta">${fmtDate(r.start_date)} s/d ${fmtDate(r.end_date)} · <span class="tag ${r.status}">${STATUS_LABEL[r.status]}</span></div>
         ${r.type === 'koreksi_absen' && r.original_time ? `<div class="meta">Jam tercatat ${r.original_time.slice(0,5)} → diminta ${r.requested_time ? r.requested_time.slice(0,5) : '—'}</div>` : ''}
+        ${r.type === 'lembur' && r.overtime_hours ? `<div class="meta">${r.overtime_hours} jam lembur</div>` : ''}
         ${r.reason ? `<div>${r.reason}</div>` : ''}
       </div>`).join('');
   }
