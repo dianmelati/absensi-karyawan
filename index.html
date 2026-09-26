@@ -398,7 +398,8 @@ function computeAttendanceMeta(){
   return { status:'terlambat', lateMinutes: billableLate, penalty: billableLate * penaltyRate };
 }
 // ---------------- AI FACIAL LIVENESS (face-api.js, jalan di browser) ----------------
-const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+const FACE_MODEL_VERSION = 'face-api.js@0.22.2';
 let faceModelsLoaded = false;
 async function ensureFaceModels(){
   if(faceModelsLoaded) return true;
@@ -435,7 +436,7 @@ function runLivenessCapture(videoEl, statusEl){
 
     statusEl.textContent = 'Arahkan wajah ke kamera…';
     let earHistory = [], blinkDetected = false, startTime = Date.now();
-    const TIMEOUT_MS = 8000;
+    const TIMEOUT_MS = 15000;
 
     async function loop(){
       if(cancelled) return;
@@ -502,20 +503,116 @@ async function captureLiveness(){
   modal.remove();
   return result; // null if user cancelled
 }
+
+// ---------------- FACE ENROLLMENT (dedicated flow, not "first capture wins") ----------------
+function openEnrollmentModal(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal-box">
+      <h4>Daftarkan Wajah</h4>
+      <div class="cam-wrap"><video id="enroll-video" muted playsinline></video></div>
+      <div class="cam-status" id="enroll-status">Menyiapkan kamera…</div>
+      <button class="pill-btn" id="enroll-cancel">Batalkan</button>
+    </div>`;
+  document.body.appendChild(modal);
+  return modal;
+}
+function runEnrollmentCapture(videoEl, statusEl){
+  return new Promise(async (resolve) => {
+    let stream = null, cancelled = false, rafId = null;
+    const cleanup = () => { cancelled = true; if(rafId) cancelAnimationFrame(rafId); if(stream) stream.getTracks().forEach(t=>t.stop()); };
+    document.getElementById('enroll-cancel').onclick = () => { cleanup(); resolve(null); };
+
+    statusEl.textContent = 'Menyiapkan kamera…'; statusEl.className = 'cam-status';
+    try{ stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' } }); }
+    catch(e){ statusEl.textContent = 'Kamera tidak dapat digunakan. Silakan izinkan akses kamera.'; statusEl.className = 'cam-status bad'; setTimeout(()=>resolve(null), 1400); return; }
+    videoEl.srcObject = stream; await videoEl.play();
+
+    const ok = await ensureFaceModels();
+    if(!ok){ statusEl.textContent = 'Model deteksi wajah gagal dimuat. Coba lagi sebentar.'; statusEl.className='cam-status bad'; cleanup(); setTimeout(()=>resolve(null), 1600); return; }
+
+    statusEl.textContent = 'Posisikan wajah di tengah…';
+    let earHistory = [], blinkDetected = false, startTime = Date.now();
+    const TIMEOUT_MS = 15000;
+    const SAMPLE_COUNT = 5;
+    const samples = [];
+    let firstBlob = null;
+
+    async function waitForBlink(){
+      if(cancelled) return null;
+      if(Date.now() - startTime > TIMEOUT_MS){
+        statusEl.textContent = 'Waktu habis. Coba lagi.'; statusEl.className = 'cam-status bad';
+        return null;
+      }
+      const det = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks(true).withFaceDescriptor();
+      if(det){
+        const lm = det.landmarks;
+        const ear = (eyeAspectRatio(lm.getLeftEye()) + eyeAspectRatio(lm.getRightEye())) / 2;
+        earHistory.push(ear); if(earHistory.length > 12) earHistory.shift();
+        statusEl.textContent = `Wajah terdeteksi — silakan berkedip… (EAR: ${ear.toFixed(2)})`;
+        if(earHistory.length >= 4){
+          const min = Math.min(...earHistory), max = Math.max(...earHistory);
+          if(max - min > 0.05 && min < 0.24) blinkDetected = true;
+        }
+        if(blinkDetected) return det;
+      } else {
+        statusEl.textContent = 'Wajah belum terdeteksi…';
+      }
+      if(cancelled) return null;
+      return new Promise(r => { rafId = requestAnimationFrame(() => r(waitForBlink())); });
+    }
+
+    const firstDet = await waitForBlink();
+    if(!firstDet){ cleanup(); resolve(null); return; }
+    samples.push(Array.from(firstDet.descriptor));
+    firstBlob = await captureFrame(videoEl);
+
+    statusEl.textContent = 'Bagus! Pertahankan posisi…'; statusEl.className = 'cam-status ok';
+    while(samples.length < SAMPLE_COUNT && !cancelled){
+      await new Promise(r => setTimeout(r, 450));
+      if(cancelled) break;
+      const det = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks(true).withFaceDescriptor();
+      if(det) samples.push(Array.from(det.descriptor));
+      statusEl.textContent = `Mengambil sampel… (${samples.length}/${SAMPLE_COUNT})`;
+    }
+    cleanup();
+    if(samples.length < 3){ resolve(null); return; }
+    resolve({ samples, selfieBlob: firstBlob });
+  });
+}
+async function captureEnrollment(){
+  const modal = openEnrollmentModal();
+  const video = modal.querySelector('#enroll-video');
+  const status = modal.querySelector('#enroll-status');
+  const result = await runEnrollmentCapture(video, status);
+  if(!result){ modal.remove(); return false; }
+  status.textContent = 'Memverifikasi…'; status.className = 'cam-status';
+  const { data, error } = await sb.rpc('enroll_face', { samples: result.samples });
+  if(error || !data || !data[0] || !data[0].success){
+    status.textContent = (data && data[0] && data[0].message) || 'Pendaftaran wajah gagal. Coba lagi.';
+    status.className = 'cam-status bad';
+    await new Promise(r => setTimeout(r, 2200));
+    modal.remove();
+    return false;
+  }
+  status.textContent = 'Wajah berhasil didaftarkan ✓'; status.className = 'cam-status ok';
+  await new Promise(r => setTimeout(r, 1000));
+  modal.remove();
+  state.employee.face_descriptor = true; // local cache so subsequent checks pass without a re-fetch
+  return true;
+}
 function euclideanDistance(a, b){
   let sum = 0; for(let i=0;i<a.length;i++) sum += (a[i]-b[i])**2; return Math.sqrt(sum);
 }
 const FACE_MATCH_THRESHOLD = 0.55;
 async function resolveFaceMatch(descriptor){
-  if(!descriptor) return { match:null, distance:null };
-  if(!state.employee.face_descriptor){
-    // Belum ada wajah referensi — capture pertama ini otomatis jadi referensi.
-    await sb.rpc('update_own_face', { descriptor, photo_url: null });
-    state.employee.face_descriptor = descriptor;
-    return { match:true, distance:0 };
-  }
-  const dist = euclideanDistance(descriptor, state.employee.face_descriptor);
-  return { match: dist <= FACE_MATCH_THRESHOLD, distance: dist };
+  if(!descriptor) return { match:null, distance:null, threshold:null };
+  const { data, error } = await sb.rpc('verify_face_match', { new_descriptor: descriptor });
+  if(error || !data || !data[0]) return { match:false, distance:null, threshold:null };
+  const row = data[0];
+  if(row.is_new_enrollment) state.employee.face_descriptor = descriptor; // keep local cache in sync
+  return { match: row.match, distance: row.distance, threshold: row.threshold };
 }
 
 async function uploadSelfie(blob){
@@ -549,36 +646,58 @@ async function flushOfflineQueue(){
 }
 window.addEventListener('online', flushOfflineQueue);
 
+// One retry for a better GPS fix if the first reading is worse than the
+// company's configured accuracy threshold — doesn't hard-block (GPS can
+// stay mediocre indoors all day), but does try once for something better,
+// and the actual accuracy is always stored either way for audit visibility.
+async function getLocationWithRetry(){
+  let loc = await getLocation();
+  const threshold = state.company?.gps_accuracy_threshold_meters ?? 50;
+  if(loc && loc.accuracy != null && loc.accuracy > threshold){
+    const retry = await getLocation();
+    if(retry && retry.accuracy != null && retry.accuracy < loc.accuracy) loc = retry;
+  }
+  return loc;
+}
 async function clockIn(){
   if(!navigator.onLine){
     setState({ busy:true, err:null });
     const loc = await getLocation();
     await queueOfflineAction({
       company_id: state.employee.company_id, employee_id: state.employee.id,
-      clock_in_lat: loc?.lat ?? null, clock_in_lng: loc?.lng ?? null,
+      clock_in_lat: loc?.lat ?? null, clock_in_lng: loc?.lng ?? null, clock_in_accuracy: loc?.accuracy ?? null,
+      clock_in: new Date().toISOString(), client_tx_id: crypto.randomUUID(),
       status:'hadir', offline_submitted:true
     });
     setState({ busy:false, msg:'Sedang offline — absen disimpan di perangkat, akan otomatis terkirim saat internet kembali.' });
     return;
   }
+  if(getFeatures().face_verification && !state.employee.face_descriptor){
+    const enrolled = await captureEnrollment();
+    if(!enrolled) return;
+  }
   const liveness = getFeatures().face_verification ? await captureLiveness() : { selfieBlob:null, livenessPassed:null, descriptor:null };
   if(liveness === null) return; // user cancelled
   setState({ busy:true, err:null });
-  const loc = await getLocation();
+  const loc = await getLocationWithRetry();
   const geo = checkGeofence(loc);
   const meta = computeAttendanceMeta();
   const faceResult = await resolveFaceMatch(liveness.descriptor);
   const selfieUrl = await uploadSelfie(liveness.selfieBlob);
   const { error } = await sb.from('attendance').insert({
     company_id: state.employee.company_id, employee_id: state.employee.id,
-    clock_in_lat: loc?.lat ?? null, clock_in_lng: loc?.lng ?? null,
+    clock_in_lat: loc?.lat ?? null, clock_in_lng: loc?.lng ?? null, clock_in_accuracy: loc?.accuracy ?? null,
     within_geofence: geo.within, distance_meters: geo.distance,
     status: meta.status, late_minutes: meta.lateMinutes, penalty_amount: meta.penalty,
     liveness_passed: liveness.livenessPassed, selfie_url: selfieUrl,
-    face_match: faceResult.match, face_distance: faceResult.distance
+    face_match: faceResult.match, face_distance: faceResult.distance,
+    face_threshold: faceResult.threshold, face_model_version: FACE_MODEL_VERSION
   });
   if(error){
-    const msg = error.code === '23505' ? 'Lo sudah absen masuk dan belum absen keluar. Refresh halaman ini.' : ('Gagal absen masuk: ' + error.message);
+    let msg;
+    if(error.code === '23505') msg = 'Lo sudah absen masuk dan belum absen keluar. Refresh halaman ini.';
+    else if(error.code === 'P0001') msg = error.message; // clean, human-readable message raised by the server itself (e.g. strict geofence rejection)
+    else msg = 'Absen masuk gagal. Coba lagi sebentar.';
     setState({ busy:false, err:msg }); return;
   }
   await loadOpenAttendance(); setState({ busy:false });
@@ -592,15 +711,26 @@ async function clockOut(){
   const liveness = getFeatures().face_verification ? await captureLiveness() : { selfieBlob:null, livenessPassed:null, descriptor:null };
   if(liveness === null) return;
   setState({ busy:true, err:null });
-  const loc = await getLocation();
+  const loc = await getLocationWithRetry();
+  const faceResult = await resolveFaceMatch(liveness.descriptor);
+  const selfieUrl = await uploadSelfie(liveness.selfieBlob);
   const { error } = await sb.from('attendance').update({
-    clock_out: new Date().toISOString(), clock_out_lat: loc?.lat ?? null, clock_out_lng: loc?.lng ?? null
+    clock_out: new Date().toISOString(), clock_out_lat: loc?.lat ?? null, clock_out_lng: loc?.lng ?? null, clock_out_accuracy: loc?.accuracy ?? null,
+    clock_out_liveness_passed: liveness.livenessPassed, clock_out_selfie_url: selfieUrl,
+    clock_out_face_match: faceResult.match, clock_out_face_distance: faceResult.distance,
+    clock_out_face_threshold: faceResult.threshold, clock_out_face_model_version: FACE_MODEL_VERSION
   }).eq('id', openAttendance.id);
-  if(error){ setState({ busy:false, err:'Gagal absen keluar: ' + error.message }); return; }
+  if(error){ setState({ busy:false, err: error.code === 'P0001' ? error.message : 'Absen keluar gagal. Coba lagi sebentar.' }); return; }
   await loadOpenAttendance(); setState({ busy:false });
 }
 
 // ---------------- ACTIONS: ADMIN — employees / locations / shifts ----------------
+async function resetEmployeeFace(employeeId, name){
+  const { error } = await sb.from('employees').update({ face_descriptor:null, reference_photo_url:null }).eq('id', employeeId);
+  closeModal();
+  if(error){ setState({ err:'Gagal reset wajah: ' + error.message }); return; }
+  employeeListLoaded = false; setState({ msg:`Data wajah "${name}" direset.` });
+}
 async function addEmployee(nip, name, email){
   setState({ busy:true, err:null });
   const { error } = await sb.from('employees').insert({ company_id: state.employee.company_id, nip, name, email, role:'employee' });
@@ -635,11 +765,16 @@ async function doUpdateEmployeeAssignment(empId, shiftId, supervisorId, role){
   if(error){ setState({ err: 'Gagal menyimpan: ' + error.message }); }
   await loadEmployeeList();
 }
-async function addLocation(name, lat, lng, radius, type){
+async function addLocation(name, lat, lng, radius, type, mode){
   setState({ busy:true, err:null });
-  const { error } = await sb.from('locations').insert({ company_id: state.employee.company_id, name, lat, lng, radius_meters: radius, type: type||'office' });
+  const { error } = await sb.from('locations').insert({ company_id: state.employee.company_id, name, lat, lng, radius_meters: radius, type: type||'office', mode: mode||'flexible' });
   if(error){ setState({ busy:false, err:'Gagal menambah lokasi: ' + error.message }); return; }
   setState({ busy:false }); await loadLocations();
+}
+async function toggleLocationMode(id, currentMode){
+  const newMode = currentMode === 'strict' ? 'flexible' : 'strict';
+  await sb.from('locations').update({ mode: newMode }).eq('id', id);
+  locationsLoaded = false; setState({ msg:`Mode geofence diubah ke ${newMode === 'strict' ? 'Strict' : 'Flexible'}.` });
 }
 async function deleteLocation(id, name){
   await sb.from('locations').delete().eq('id', id);
@@ -655,9 +790,9 @@ async function addShift(name, start, end){
   if(error){ setState({ busy:false, err:'Gagal menambah shift: ' + error.message }); return; }
   setState({ busy:false }); await loadShifts();
 }
-async function updatePenaltySettings(tolerance, rate, overtimeRate, leaveQuota){
+async function updatePenaltySettings(tolerance, rate, overtimeRate, leaveQuota, gpsThreshold){
   setState({ busy:true, err:null });
-  const { data, error } = await sb.from('companies').update({ late_tolerance_minutes: tolerance, penalty_per_minute: rate, overtime_rate_per_hour: overtimeRate, annual_leave_quota_days: leaveQuota }).eq('id', state.employee.company_id).select().single();
+  const { data, error } = await sb.from('companies').update({ late_tolerance_minutes: tolerance, penalty_per_minute: rate, overtime_rate_per_hour: overtimeRate, annual_leave_quota_days: leaveQuota, gps_accuracy_threshold_meters: gpsThreshold }).eq('id', state.employee.company_id).select().single();
   if(error){ setState({ busy:false, err:'Gagal menyimpan pengaturan: ' + error.message }); return; }
   setState({ busy:false, company:data, msg:'Pengaturan disimpan.' });
 }
@@ -2004,7 +2139,7 @@ function renderEmployees(main){
     </div>
     ${state.err ? `<div class="err">${state.err}</div>` : ''}
     ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
-    <table><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Shift</th><th>Atasan</th><th>Akun</th></tr></thead>
+    <table><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Shift</th><th>Atasan</th><th>Akun</th><th>Wajah</th></tr></thead>
     <tbody id="e-rows"></tbody></table>
   `;
   main.querySelector('#e-add').onclick = () => {
@@ -2015,8 +2150,8 @@ function renderEmployees(main){
     addEmployee(nip, name, email);
   };
   const rows = main.querySelector('#e-rows');
-  if(!employeeListLoaded){ rows.innerHTML = Array(3).fill(0).map(()=>`<tr><td colspan="6"><div class="skeleton" style="height:18px;"></div></td></tr>`).join(''); }
-  else if(employeeList.length === 0){ rows.innerHTML = `<tr><td colspan="6" class="empty">Belum ada karyawan.</td></tr>`; }
+  if(!employeeListLoaded){ rows.innerHTML = Array(3).fill(0).map(()=>`<tr><td colspan="7"><div class="skeleton" style="height:18px;"></div></td></tr>`).join(''); }
+  else if(employeeList.length === 0){ rows.innerHTML = `<tr><td colspan="7" class="empty">Belum ada karyawan.</td></tr>`; }
   else {
     rows.innerHTML = employeeList.map(e => `
       <tr data-id="${e.id}">
@@ -2026,13 +2161,20 @@ function renderEmployees(main){
         <td><select class="f-shift"><option value="">—</option>${shiftsList.map(s=>`<option value="${s.id}" ${e.shift_id===s.id?'selected':''}>${s.name}</option>`).join('')}</select></td>
         <td><select class="f-sup"><option value="">—</option>${employeeList.filter(x=>x.id!==e.id).map(x=>`<option value="${x.id}" ${e.supervisor_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></td>
         <td>${e.auth_user_id ? 'Aktif' : 'Belum daftar'}</td>
+        <td>${e.face_descriptor ? '<span class="tag active">Terdaftar</span> <a class="face-reset" style="font-size:11.5px;color:var(--bad);cursor:pointer;">Reset</a>' : '<span class="tag trial">Belum ada</span>'}</td>
       </tr>`).join('');
     rows.querySelectorAll('tr').forEach(tr => {
       const id = tr.dataset.id;
+      const emp = employeeList.find(x => x.id === id);
       const save = () => updateEmployeeAssignment(id, tr.querySelector('.f-shift').value, tr.querySelector('.f-sup').value, tr.querySelector('.f-role').value, tr.querySelector('.f-role'));
       tr.querySelector('.f-role').onchange = save;
       tr.querySelector('.f-shift').onchange = save;
       tr.querySelector('.f-sup').onchange = save;
+      const resetBtn = tr.querySelector('.face-reset');
+      if(resetBtn) resetBtn.onclick = () => openConfirmModal({
+        title:'Reset Wajah?', body:`Data wajah "${emp.name}" akan dihapus. Absen berikutnya akan otomatis mendaftarkan wajah baru sebagai referensi.`,
+        confirmLabel:'Ya, Reset', danger:true, onConfirm:() => resetEmployeeFace(id, emp.name)
+      });
     });
   }
   if(!employeeListLoaded) loadEmployeeList();
@@ -2055,9 +2197,14 @@ function renderLocationsShifts(main){
           <div><label>Longitude</label><input id="loc-lng" placeholder="106.816666" /></div>
         </div>
         <label>Radius (meter)</label><input id="loc-radius" value="150" />
+        <label>Mode Geofence</label>
+        <select id="loc-mode">
+          <option value="flexible">Flexible — catat & tandai kalau di luar radius, tetap boleh absen</option>
+          <option value="strict">Strict — tolak absen kalau di luar radius</option>
+        </select>
         <button class="pill-btn small" id="loc-use-my" style="margin-top:10px;">Pakai lokasi saya sekarang</button>
         <button class="btn-main" id="loc-add" ${state.busy?'disabled':''}>Simpan Lokasi</button>
-        ${locationsList.map(l => `<div class="meta" style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:8px;" data-loc-id="${l.id}"><span>• ${l.name}${l.type==='project_site'?' (Project Site)':''} — radius ${l.radius_meters}m</span><a class="loc-del" style="color:var(--bad); cursor:pointer; font-size:12px; flex-shrink:0;">Hapus</a></div>`).join('')}
+        ${locationsList.map(l => `<div class="meta" style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:8px;" data-loc-id="${l.id}"><span>• ${l.name}${l.type==='project_site'?' (Project Site)':''} — radius ${l.radius_meters}m — <span class="tag ${l.mode==='strict'?'suspended':'trial'}">${l.mode==='strict'?'Strict':'Flexible'}</span></span><span style="display:flex; gap:8px; flex-shrink:0;"><a class="loc-mode-toggle" style="cursor:pointer; font-size:12px;">Ubah Mode</a><a class="loc-del" style="color:var(--bad); cursor:pointer; font-size:12px;">Hapus</a></span></div>`).join('')}
       </div>
       <div class="card-box">
         <h4>Tambah Shift</h4>
@@ -2082,8 +2229,9 @@ function renderLocationsShifts(main){
     const lng = parseFloat(main.querySelector('#loc-lng').value);
     const radius = parseInt(main.querySelector('#loc-radius').value || '150');
     const type = main.querySelector('#loc-type').value;
+    const mode = main.querySelector('#loc-mode').value;
     if(!name || isNaN(lat) || isNaN(lng)){ setState({ err:'Nama, latitude, dan longitude wajib diisi.' }); return; }
-    addLocation(name, lat, lng, radius, type);
+    addLocation(name, lat, lng, radius, type, mode);
   };
   main.querySelector('#shift-add').onclick = () => {
     const name = main.querySelector('#shift-name').value.trim();
@@ -2098,6 +2246,17 @@ function renderLocationsShifts(main){
       title:'Hapus Lokasi?', body:`"${loc.name}" akan dihapus. Karyawan yang absen akan divalidasi tanpa lokasi ini.`,
       confirmLabel:'Ya, Hapus', danger:true, onConfirm:() => deleteLocation(loc.id, loc.name)
     });
+    row.querySelector('.loc-mode-toggle').onclick = () => {
+      const label = loc.mode === 'strict' ? 'Flexible' : 'Strict';
+      openConfirmModal({
+        title:`Ubah ke Mode ${label}?`,
+        body: loc.mode === 'strict'
+          ? `"${loc.name}" akan jadi Flexible — karyawan di luar radius tetap bisa absen (cuma ditandai).`
+          : `"${loc.name}" akan jadi Strict — karyawan di luar radius TIDAK BISA absen sama sekali dari lokasi ini.`,
+        confirmLabel:'Ya, Ubah', danger: loc.mode !== 'strict',
+        onConfirm:() => { closeModal(); toggleLocationMode(loc.id, loc.mode); }
+      });
+    };
   });
   main.querySelectorAll('[data-shift-id]').forEach(row => {
     const sh = shiftsList.find(s => s.id === row.dataset.shiftId);
@@ -2166,7 +2325,11 @@ function renderRecap(main){
         <td>${a.clock_out ? fmtDateTime(a.clock_out) : '—'}</td>
         <td><span class="tag ${a.status}">${a.status}</span></td>
         <td>${a.within_geofence===null || a.within_geofence===undefined ? '—' : `<span class="tag ${a.within_geofence?'geo-ok':'geo-bad'}">${a.within_geofence? 'Dalam radius':'Luar radius'}</span>`}</td>
-        <td>${a.liveness_passed===null || a.liveness_passed===undefined ? '—' : `<span class="tag ${a.liveness_passed?'geo-ok':'geo-bad'}">${a.liveness_passed? 'Terverifikasi':'Gagal'}</span>`}${a.needs_liveness_review ? ` <span class="tag suspended">Perlu Review</span>` : ''}${a.selfie_url ? ` <a href="${a.selfie_url}" target="_blank" style="font-size:11px;">lihat foto</a>` : ''}</td>
+        <td>
+          <div>Masuk: ${a.liveness_passed===null || a.liveness_passed===undefined ? '—' : `<span class="tag ${a.liveness_passed?'geo-ok':'geo-bad'}">${a.liveness_passed? 'Terverifikasi':'Gagal'}</span>`}${a.selfie_url ? ` <a href="${a.selfie_url}" target="_blank" style="font-size:11px;">foto</a>` : ''}</div>
+          ${a.clock_out ? `<div style="margin-top:3px;">Keluar: ${a.clock_out_liveness_passed===null || a.clock_out_liveness_passed===undefined ? '—' : `<span class="tag ${a.clock_out_liveness_passed?'geo-ok':'geo-bad'}">${a.clock_out_liveness_passed? 'Terverifikasi':'Gagal'}</span>`}${a.clock_out_selfie_url ? ` <a href="${a.clock_out_selfie_url}" target="_blank" style="font-size:11px;">foto</a>` : ''}</div>` : ''}
+          ${a.needs_liveness_review ? `<span class="tag suspended">Perlu Review</span>` : ''}
+        </td>
         <td>${a.late_minutes ? a.late_minutes + ' mnt' : '—'}</td>
         <td>${a.penalty_amount ? 'Rp' + Number(a.penalty_amount).toLocaleString('id-ID') : '—'}</td>
         <td>${a.needs_liveness_review ? `<div class="action-links"><a class="rv-approve">Setujui</a><a class="rv-reject danger">Tolak</a></div>` : ''}</td>
@@ -2189,6 +2352,7 @@ function renderSettings(main){
   const rate = state.company?.penalty_per_minute ?? 0;
   const otRate = state.company?.overtime_rate_per_hour ?? 0;
   const leaveQuota = state.company?.annual_leave_quota_days ?? 12;
+  const gpsThresh = state.company?.gps_accuracy_threshold_meters ?? 50;
   main.innerHTML = `
     <h3 class="section-title">Pengaturan Penalti & Lembur</h3>
     <p class="section-sub">Dihitung otomatis berdasarkan jam mulai shift tiap karyawan. Toleransi tidak kena potongan; setelah itu, tiap menit kena tarif di bawah.</p>
@@ -2197,6 +2361,8 @@ function renderSettings(main){
       <label>Potongan per menit setelah toleransi (Rp)</label><input id="st-rate" value="${rate}" />
       ${getFeatures().overtime ? `<label>Tarif lembur per jam (Rp)</label><input id="st-ot-rate" value="${otRate}" />` : ''}
       <label>Kuota cuti tahunan (hari/karyawan)</label><input id="st-leave-quota" value="${leaveQuota}" />
+      <label>Ambang akurasi GPS (meter)</label><input id="st-gps-thresh" value="${gpsThresh}" />
+      <p class="section-sub" style="margin:4px 0 0;">Kalau sinyal GPS karyawan lebih buruk dari ini, sistem coba ambil ulang sekali sebelum lanjut. Nilai akurasi tetap dicatat di setiap absen buat referensi admin.</p>
       <button class="btn-main" id="st-save" ${state.busy?'disabled':''}>Simpan</button>
       ${state.err ? `<div class="err">${state.err}</div>` : ''}
       ${state.msg ? `<div class="msg-ok">${state.msg}</div>` : ''}
@@ -2207,7 +2373,8 @@ function renderSettings(main){
     const r = parseFloat(main.querySelector('#st-rate').value || '0');
     const otr = getFeatures().overtime ? parseFloat(main.querySelector('#st-ot-rate')?.value || '0') : otRate;
     const lq = parseInt(main.querySelector('#st-leave-quota').value || '0');
-    updatePenaltySettings(tolerance, r, otr, lq);
+    const gt = parseFloat(main.querySelector('#st-gps-thresh').value || '50');
+    updatePenaltySettings(tolerance, r, otr, lq, gt);
   };
 }
 
