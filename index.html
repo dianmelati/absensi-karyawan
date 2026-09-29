@@ -663,10 +663,11 @@ async function clockIn(){
   if(!navigator.onLine){
     setState({ busy:true, err:null });
     const loc = await getLocation();
+    const offlineFp = await getDeviceFingerprint();
     await queueOfflineAction({
       company_id: state.employee.company_id, employee_id: state.employee.id,
       clock_in_lat: loc?.lat ?? null, clock_in_lng: loc?.lng ?? null, clock_in_accuracy: loc?.accuracy ?? null,
-      clock_in: new Date().toISOString(), client_tx_id: crypto.randomUUID(),
+      clock_in: new Date().toISOString(), client_tx_id: crypto.randomUUID(), device_fingerprint: offlineFp,
       status:'hadir', offline_submitted:true
     });
     setState({ busy:false, msg:'Sedang offline — absen disimpan di perangkat, akan otomatis terkirim saat internet kembali.' });
@@ -684,6 +685,7 @@ async function clockIn(){
   const meta = computeAttendanceMeta();
   const faceResult = await resolveFaceMatch(liveness.descriptor);
   const selfieUrl = await uploadSelfie(liveness.selfieBlob);
+  const deviceFp = await getDeviceFingerprint();
   const { error } = await sb.from('attendance').insert({
     company_id: state.employee.company_id, employee_id: state.employee.id,
     clock_in_lat: loc?.lat ?? null, clock_in_lng: loc?.lng ?? null, clock_in_accuracy: loc?.accuracy ?? null,
@@ -691,7 +693,8 @@ async function clockIn(){
     status: meta.status, late_minutes: meta.lateMinutes, penalty_amount: meta.penalty,
     liveness_passed: liveness.livenessPassed, selfie_url: selfieUrl,
     face_match: faceResult.match, face_distance: faceResult.distance,
-    face_threshold: faceResult.threshold, face_model_version: FACE_MODEL_VERSION
+    face_threshold: faceResult.threshold, face_model_version: FACE_MODEL_VERSION,
+    device_fingerprint: deviceFp
   });
   if(error){
     let msg;
@@ -714,11 +717,13 @@ async function clockOut(){
   const loc = await getLocationWithRetry();
   const faceResult = await resolveFaceMatch(liveness.descriptor);
   const selfieUrl = await uploadSelfie(liveness.selfieBlob);
+  const deviceFp = await getDeviceFingerprint();
   const { error } = await sb.from('attendance').update({
     clock_out: new Date().toISOString(), clock_out_lat: loc?.lat ?? null, clock_out_lng: loc?.lng ?? null, clock_out_accuracy: loc?.accuracy ?? null,
     clock_out_liveness_passed: liveness.livenessPassed, clock_out_selfie_url: selfieUrl,
     clock_out_face_match: faceResult.match, clock_out_face_distance: faceResult.distance,
-    clock_out_face_threshold: faceResult.threshold, clock_out_face_model_version: FACE_MODEL_VERSION
+    clock_out_face_threshold: faceResult.threshold, clock_out_face_model_version: FACE_MODEL_VERSION,
+    clock_out_device_fingerprint: deviceFp
   }).eq('id', openAttendance.id);
   if(error){ setState({ busy:false, err: error.code === 'P0001' ? error.message : 'Absen keluar gagal. Coba lagi sebentar.' }); return; }
   await loadOpenAttendance(); setState({ busy:false });
@@ -902,14 +907,18 @@ function exportReportXlsx(){
 
 // ---------------- P2: DEVICE MANAGEMENT ----------------
 let devicesList = [], devicesLoaded = false;
-async function ensureDeviceRegistered(){
-  if(!state.employee) return;
+async function getDeviceFingerprint(){
   let fp = null;
   try{ const r = await window.storage.get('device-fingerprint', false); fp = r ? JSON.parse(r.value) : null; }catch(e){ fp = null; }
   if(!fp){
     fp = 'dev_' + Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b=>b.toString(16).padStart(2,'0')).join('');
     try{ await window.storage.set('device-fingerprint', JSON.stringify(fp), false); }catch(e){}
   }
+  return fp;
+}
+async function ensureDeviceRegistered(){
+  if(!state.employee) return;
+  const fp = await getDeviceFingerprint();
   const isMobile = /Mobi|Android|iPhone/i.test(navigator.userAgent);
   await sb.from('devices').upsert({
     company_id: state.employee.company_id, employee_id: state.employee.id, device_fingerprint: fp,
@@ -923,6 +932,12 @@ async function loadDevices(){
 async function resetDevice(id){
   await sb.from('devices').update({ status:'replaced' }).eq('id', id);
   await loadDevices();
+}
+async function setDeviceStatus(id, status, successMsg){
+  const { error } = await sb.from('devices').update({ status }).eq('id', id);
+  closeModal();
+  if(error){ setState({ err:'Gagal mengubah status device: ' + error.message }); return; }
+  devicesLoaded = false; setState({ msg: successMsg, err:null });
 }
 
 // ---------------- P2: AUDIT TRAIL ----------------
@@ -1846,7 +1861,7 @@ function getFeatures(){
   return Object.assign({
     face_verification:true, geofence:true, field_visit:false, live_tracking:false,
     shift_swap:true, overtime:true, payroll:true, api_webhook:true, multi_branch:true,
-    strict_liveness:false
+    strict_liveness:false, device_binding:false
   }, state.company?.features || {});
 }
 function navItemsFor(role){
@@ -2544,7 +2559,8 @@ function renderReports(main){
 function renderDevices(main){
   main.innerHTML = `
     <h3 class="section-title">Device Management</h3>
-    <p class="section-sub">Device diidentifikasi lewat fingerprint browser (bukan ID hardware asli). Reset kalau karyawan ganti HP.</p>
+    <p class="section-sub">Device diidentifikasi lewat fingerprint browser (bukan ID hardware asli). Device baru butuh persetujuan admin dulu sebelum bisa dipakai absen.</p>
+    ${state.msg ? `<div class="msg-ok" style="margin-bottom:14px;">${state.msg}</div>` : ''}
     <table><thead><tr><th>Karyawan</th><th>OS</th><th>Tipe</th><th>Status</th><th>Terakhir Aktif</th><th></th></tr></thead>
     <tbody id="dv-rows"></tbody></table>
   `;
@@ -2555,11 +2571,25 @@ function renderDevices(main){
     rows.innerHTML = devicesList.map(d => `
       <tr data-id="${d.id}">
         <td>${d.employees?.name||'—'}</td><td>${d.os||'—'}</td><td>${d.device_type||'—'}</td>
-        <td><span class="tag ${d.status==='active'?'geo-ok':(d.status==='blocked'?'geo-bad':'pending_hr')}">${d.status}</span></td>
+        <td><span class="tag ${d.status==='active'?'geo-ok':(d.status==='blocked'?'geo-bad':'pending_hr')}">${d.status==='pending'?'Menunggu Approval':d.status}</span></td>
         <td>${fmtDateTime(d.last_active)}</td>
-        <td>${d.status!=='replaced' ? `<button class="pill-btn small dv-reset">Reset</button>` : ''}</td>
+        <td><div class="action-links">
+          ${d.status==='pending' ? `<a class="dv-approve">Setujui</a><a class="dv-block danger">Tolak</a>` : ''}
+          ${d.status==='active' ? `<a class="dv-block danger">Blokir</a>` : ''}
+          ${d.status==='blocked' ? `<a class="dv-approve">Aktifkan Lagi</a>` : ''}
+        </div></td>
       </tr>`).join('');
-    rows.querySelectorAll('.dv-reset').forEach(btn => { btn.onclick = () => resetDevice(btn.closest('tr').dataset.id); });
+    rows.querySelectorAll('[data-id]').forEach(tr => {
+      const id = tr.dataset.id;
+      const d = devicesList.find(x => x.id === id);
+      const approve = tr.querySelector('.dv-approve');
+      const block = tr.querySelector('.dv-block');
+      if(approve) approve.onclick = () => setDeviceStatus(id, 'active', `Device ${d.employees?.name||''} diaktifkan.`);
+      if(block) block.onclick = () => openConfirmModal({
+        title:'Blokir Device Ini?', body:`Device ${d.employees?.name||''} (${d.os||'—'}) tidak akan bisa dipakai absen sampai diaktifkan lagi.`,
+        confirmLabel:'Ya, Blokir', danger:true, onConfirm:() => setDeviceStatus(id, 'blocked', `Device ${d.employees?.name||''} diblokir.`)
+      });
+    });
   }
   if(!devicesLoaded) loadDevices();
 }
@@ -2605,7 +2635,8 @@ const FEATURE_LABEL = {
   field_visit:'Field Visit & Live Tracking', live_tracking:'Live Tracking Rute Karyawan',
   shift_swap:'Tukar Shift', overtime:'Lembur', payroll:'Gaji & Export Payroll (angka belum termasuk pajak/BPJS — matikan kalau perusahaan lo urus gaji lewat sistem lain)',
   api_webhook:'API & Webhook', multi_branch:'Multi Cabang',
-  strict_liveness:'Wajibkan Verifikasi Wajah — kalau gagal, absen ditahan sampai disetujui admin'
+  strict_liveness:'Wajibkan Verifikasi Wajah — kalau gagal, absen ditahan sampai disetujui admin',
+  device_binding:'Device Binding — device baru harus disetujui admin dulu sebelum bisa dipakai absen (device pertama tiap karyawan otomatis terdaftar)'
 };
 function renderBranding(main){
   if(!brandingLoaded){
